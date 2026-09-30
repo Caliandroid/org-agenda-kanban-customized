@@ -238,20 +238,47 @@ the weekday name."
 
 (defcustom org-agenda-kanban-priority-style 'cookie
   "How a card reflects its Org priority.
-Priority colors come from Org's own `org-priority-faces' (with the
-`org-priority' face as fallback) — the same source org-agenda and Org
-font-locking use — so the board matches your configured priority colors
-instead of inventing its own.
+A priority's color is taken from `org-agenda-kanban-priority-colors'
+when it has an entry there, and otherwise from Org's own
+`org-priority-faces' (with the `org-priority' face as fallback for the
+cookie) — the same source org-agenda and Org font-locking use.
 
 Possible values:
 
-  cookie  Color the [#X] priority cookie on the card (default).
-  nil     Render priorities with no special color.
+  cookie      Color the [#X] priority cookie on the card (default).
+  background  Tint the whole card background with the priority color.
+  both        Color the cookie and tint the background.
+  nil         Render priorities with no special color.
 
-A selected card always uses the selection background regardless of
-priority; its cookie is still colored when the style is `cookie'."
+Background tinting blends the priority color into the card background
+by `org-agenda-kanban-priority-tint', so text stays readable on light
+and dark themes.  Cards without a priority cookie, or whose priority
+has no color, keep the neutral background.  A selected card always uses
+the selection background regardless of priority."
   :type '(choice (const :tag "Color the priority cookie" cookie)
+                 (const :tag "Tint the card background" background)
+                 (const :tag "Color cookie and tint background" both)
                  (const :tag "No priority color" nil))
+  :group 'org-agenda-kanban)
+
+(defcustom org-agenda-kanban-priority-colors nil
+  "Alist mapping a priority character to the color used for it on cards.
+Each entry is (PRIORITY . COLOR), e.g.
+
+  \\='((?A . \"#ff5555\") (?B . \"orange\") (?C . \"gold\"))
+
+An entry here takes precedence over `org-priority-faces' for both the
+cookie and the background tint (see `org-agenda-kanban-priority-style');
+priorities without an entry fall back to `org-priority-faces'."
+  :type '(alist :key-type (character :tag "Priority")
+                :value-type (color :tag "Color"))
+  :group 'org-agenda-kanban)
+
+(defcustom org-agenda-kanban-priority-tint 0.25
+  "Fraction (0.0 to 1.0) of the priority color blended into a card.
+Only used when `org-agenda-kanban-priority-style' is `background' or
+`both'.  0.0 disables tinting; larger values give stronger colors."
+  :type 'number
   :group 'org-agenda-kanban)
 
 (defcustom org-agenda-kanban-line-spacing 0
@@ -763,10 +790,50 @@ help-echo so cards keep their own click behavior."
             s))))))
 
 (defun org-agenda-kanban--priority-spec (priority)
-  "Return the configured face-or-color for PRIORITY from `org-priority-faces'.
-Return nil when PRIORITY is nil or has no configured entry.  Each value
-in `org-priority-faces' is, per Org, a face symbol or a color string."
-  (and priority (cdr (assq priority org-priority-faces))))
+  "Return the configured face-or-color for PRIORITY.
+Look in `org-agenda-kanban-priority-colors' first, then in
+`org-priority-faces'.  Return nil when PRIORITY is nil or has no
+configured entry.  Each value is, per Org, a face symbol or a color
+string."
+  (and priority
+       (cdr (or (assq priority org-agenda-kanban-priority-colors)
+                (assq priority org-priority-faces)))))
+
+(defun org-agenda-kanban--rgb (color)
+  "Return COLOR as a list of three floats in 0.0..1.0, or nil.
+COLOR may be anything `org-agenda-kanban--css-color' accepts."
+  (let ((hex (org-agenda-kanban--css-color color)))
+    (and hex
+         (mapcar (lambda (i) (/ (string-to-number (substring hex i (+ i 2)) 16)
+                                255.0))
+                 '(1 3 5)))))
+
+(defun org-agenda-kanban--priority-tint-p ()
+  "Return non-nil when cards should be tinted by priority."
+  (and (memq org-agenda-kanban-priority-style '(background both))
+       (> org-agenda-kanban-priority-tint 0)))
+
+(defun org-agenda-kanban--priority-background-face (priority)
+  "Return an anonymous face tinting a card with PRIORITY, or nil.
+The priority color is blended into the neutral card background by
+`org-agenda-kanban-priority-tint' (clamped to 0.0..1.0).  Return nil
+when tinting is off, PRIORITY is nil or has no color, or the card
+background cannot be resolved (e.g. an unspecified terminal
+background), so the caller keeps the neutral card face."
+  (when (and priority (org-agenda-kanban--priority-tint-p))
+    (let ((accent (org-agenda-kanban--rgb
+                   (org-agenda-kanban--priority-spec priority)))
+          (bg (org-agenda-kanban--rgb
+               (or (face-background 'org-agenda-kanban-card nil t)
+                   (face-background 'default nil t))))
+          (tint (min 1.0 (float org-agenda-kanban-priority-tint))))
+      (when (and accent bg)
+        (list :inherit 'org-agenda-kanban-card
+              :background (apply #'format "#%02x%02x%02x"
+                                 (cl-mapcar (lambda (a b)
+                                              (round (* 255 (+ (* tint a)
+                                                               (* (- 1 tint) b)))))
+                                            accent bg)))))))
 
 (defun org-agenda-kanban--priority-cookie-face (priority)
   "Return the `face' value used to render PRIORITY's [#X] cookie.
@@ -981,6 +1048,7 @@ the clickable, filter-toggling elements."
   (let* ((content-width (- width org-agenda-kanban--bar-width))
          (prio (org-agenda-kanban-card-priority card))
          (base (cond (selectedp 'org-agenda-kanban-card-selected)
+                     ((org-agenda-kanban--priority-background-face prio))
                      (t 'org-agenda-kanban-card)))
          ;; Draw the selection accent as a solid background fill rather than a
          ;; foreground glyph: a half-block character only paints as tall as its
@@ -997,12 +1065,8 @@ the clickable, filter-toggling elements."
          (rendered (org-agenda-kanban--fontify-title
                     (org-agenda-kanban-card-title card)))
          (title (concat (when prio (propertize (format "[#%c] " prio)
-                                               ;; Any non-nil style colors the
-                                               ;; cookie, so a legacy
-                                               ;; `background'/`both' value
-                                               ;; migrates to cookie coloring
-                                               ;; rather than no color at all.
-                                               'face (if org-agenda-kanban-priority-style
+                                               'face (if (memq org-agenda-kanban-priority-style
+                                                               '(cookie both))
                                                         (org-agenda-kanban--priority-cookie-face prio)
                                                        'org-agenda-kanban-priority)))
                         (progn
@@ -1733,7 +1797,9 @@ color:var(--muted);background:var(--col);padding:.75rem 1rem .5rem;border-radius
 background:var(--border);color:var(--fg);text-align:center;font-size:.75rem;letter-spacing:0}
 td{vertical-align:top;background:var(--col);padding:.25rem .5rem .75rem;border-radius:0 0 .75rem .75rem}
 ul.cards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.5rem}
-.card{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--prio,var(--border));\
+.card{background-color:var(--card);\
+background-image:linear-gradient(var(--tint,transparent),var(--tint,transparent));\
+border:1px solid var(--border);border-left:4px solid var(--prio,var(--border));\
 border-radius:.5rem;padding:.6rem .75rem;box-shadow:var(--shadow);overflow-wrap:anywhere}
 .prio-a{--prio:var(--prio-a)}.prio-b{--prio:var(--prio-b)}.prio-c{--prio:var(--prio-c)}
 .title{font-weight:500}
@@ -1914,7 +1980,19 @@ due/overdue planning classes."
          (file (org-agenda-kanban-card-file card)))
     (concat
      (format "<li class=\"%s\"%s>" classes
-             (if prio-color (format " style=\"--prio:%s\"" prio-color) ""))
+             (if prio-color
+                 (format " style=\"--prio:%s%s\"" prio-color
+                         (if (org-agenda-kanban--priority-tint-p)
+                             ;; A translucent tint works over both the light
+                             ;; and the dark card background.
+                             (apply #'format ";--tint:rgba(%d,%d,%d,%.2f)"
+                                    (append
+                                     (mapcar (lambda (c) (round (* 255 c)))
+                                             (org-agenda-kanban--rgb prio-color))
+                                     (list (min 1.0 (float
+                                                     org-agenda-kanban-priority-tint)))))
+                           ""))
+               ""))
      "<div class=\"title\">"
      (when prio (format "<span class=\"prio\">%c</span>" prio))
      (org-agenda-kanban--title-html (org-agenda-kanban-card-title card))

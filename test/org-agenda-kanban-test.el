@@ -392,10 +392,84 @@ order."
     (let ((face (funcall cookie-face nil)))
       (should-not (member '(:foreground "#ff0000") face))
       (should (member 'org-agenda-kanban-priority face)))
-    ;; The defcustom no longer offers background tinting.
-    (should (equal (get 'org-agenda-kanban-priority-style 'custom-type)
-                   '(choice (const :tag "Color the priority cookie" cookie)
-                            (const :tag "No priority color" nil))))))
+    ;; `both' colors the cookie too; `background' alone does not.
+    (should (member '(:foreground "#ff0000") (funcall cookie-face 'both)))
+    (should-not (member '(:foreground "#ff0000") (funcall cookie-face 'background)))
+    (should (equal (mapcar #'car-safe
+                           (cdr (get 'org-agenda-kanban-priority-style 'custom-type)))
+                   '(const const const const)))))
+
+(defmacro org-agenda-kanban-test--with-card-bg (bg &rest body)
+  "Run BODY with the card background resolving to BG."
+  (declare (indent 1))
+  `(cl-letf* ((orig (symbol-function 'face-background))
+              ((symbol-function 'face-background)
+               (lambda (face &rest args)
+                 (if (memq face '(org-agenda-kanban-card default))
+                     ,bg
+                   (apply orig face args)))))
+     ,@body))
+
+(ert-deftest org-agenda-kanban-test-priority-background-face ()
+  "Background tinting blends the priority color into the card background."
+  (let ((org-priority-faces '((?A . "#ff0000")))
+        (org-agenda-kanban-priority-colors nil)
+        (org-agenda-kanban-priority-tint 0.25))
+    (org-agenda-kanban-test--with-card-bg "#000000"
+      (let ((org-agenda-kanban-priority-style 'background))
+        (should (equal (org-agenda-kanban--priority-background-face ?A)
+                       '(:inherit org-agenda-kanban-card :background "#400000")))
+        ;; No color configured, or no priority: no tint.
+        (should-not (org-agenda-kanban--priority-background-face ?B))
+        (should-not (org-agenda-kanban--priority-background-face nil)))
+      (let ((org-agenda-kanban-priority-style 'both))
+        (should (org-agenda-kanban--priority-background-face ?A)))
+      (dolist (style '(cookie nil))
+        (let ((org-agenda-kanban-priority-style style))
+          (should-not (org-agenda-kanban--priority-background-face ?A))))
+      (let ((org-agenda-kanban-priority-style 'background)
+            (org-agenda-kanban-priority-tint 0))
+        (should-not (org-agenda-kanban--priority-background-face ?A))))
+    ;; An unresolvable background (e.g. a terminal) disables tinting.
+    (org-agenda-kanban-test--with-card-bg nil
+      (let ((org-agenda-kanban-priority-style 'background))
+        (should-not (org-agenda-kanban--priority-background-face ?A))))))
+
+(ert-deftest org-agenda-kanban-test-priority-colors-override ()
+  "`org-agenda-kanban-priority-colors' wins over `org-priority-faces'."
+  (let ((org-priority-faces '((?A . "#ff0000") (?B . "#00ff00")))
+        (org-agenda-kanban-priority-colors '((?A . "blue") (?D . "white")))
+        (org-agenda-kanban-priority-tint 1.0)
+        (org-agenda-kanban-priority-style 'background))
+    (should (equal (org-agenda-kanban--priority-spec ?A) "blue"))
+    (should (equal (org-agenda-kanban--priority-spec ?B) "#00ff00"))
+    (org-agenda-kanban-test--with-card-bg "#000000"
+      (should (equal (plist-get (org-agenda-kanban--priority-background-face ?D)
+                                :background)
+                     "#ffffff")))))
+
+(ert-deftest org-agenda-kanban-test-card-lines-tinted ()
+  "An unselected card is tinted; a selected card keeps the selection face."
+  (let ((org-agenda-kanban-priority-colors '((?A . "#ff0000")))
+        (org-agenda-kanban-priority-tint 0.5)
+        (org-agenda-kanban-priority-style 'background)
+        (card (org-agenda-kanban-card-create
+               :id "x" :title "Task" :todo "TODO" :priority ?A)))
+    (org-agenda-kanban-test--with-card-bg "#000000"
+      (let* ((tint '(:inherit org-agenda-kanban-card :background "#800000"))
+             (face-of (lambda (selectedp)
+                        (let ((face (get-text-property
+                                     (1- (length (car (org-agenda-kanban--card-lines
+                                                       card 24 selectedp))))
+                                     'face
+                                     (car (org-agenda-kanban--card-lines
+                                           card 24 selectedp)))))
+                          (if (and (listp face) (not (keywordp (car face))))
+                              face
+                            (list face))))))
+        (should (member tint (funcall face-of nil)))
+        (should-not (member tint (funcall face-of t)))
+        (should (memq 'org-agenda-kanban-card-selected (funcall face-of t)))))))
 
 (ert-deftest org-agenda-kanban-test-files-custom-type-includes-directories ()
   "The files defcustom accepts both files and directories."
@@ -1211,6 +1285,16 @@ narrowed command narrows even when the option is off."
     (should (string-match-p "class=\"card done\"" html))
     (should (string-match-p "<li class=\"exclude\">#home</li>" html))
     (should (string-match-p "Done within 7 days" html))))
+
+(ert-deftest org-agenda-kanban-test-board-html-tint ()
+  "With background tinting the exported card carries a translucent tint."
+  (let ((org-agenda-kanban-priority-style 'both)
+        (org-agenda-kanban-priority-tint 0.25))
+    (should (string-match-p
+             "style=\"--prio:#ff0000;--tint:rgba(255,0,0,0.25)\""
+             (org-agenda-kanban-test--html-board))))
+  (let ((org-agenda-kanban-priority-style 'cookie))
+    (should-not (string-match-p "--tint:rgba" (org-agenda-kanban-test--html-board)))))
 
 (ert-deftest org-agenda-kanban-test-board-html-self-contained ()
   "The export loads no external scripts, stylesheets, fonts or images."

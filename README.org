@@ -35,7 +35,16 @@ configurable set of Org files.  The board is inspired by the visual polish of
   =org-agenda=.
 - *Priority coloring.*  The =[#X]= priority cookie on each card is colored
   using your configured ~org-priority-faces~ — the same source =org-agenda=
-  uses (see ~org-agenda-kanban-priority-style~).
+  uses — and cards can optionally be tinted by priority as a whole (see
+  ~org-agenda-kanban-priority-style~).  Colors can also be set just for the
+  board with ~org-agenda-kanban-priority-colors~:
+  #+begin_src emacs-lisp
+  (setq org-agenda-kanban-priority-style 'both      ; cookie + card tint
+        org-agenda-kanban-priority-colors '((?A . "#ff5555")
+                                            (?B . "#ffb86c")
+                                            (?C . "#f1fa8c"))
+        org-agenda-kanban-priority-tint 0.25)     ; tint strength 0.0-1.0
+  #+end_src
 - *Planning timestamps.*  A card shows its =SCHEDULED= and =DEADLINE=
   timestamps when set, each on its own line beneath the title, with any
   repeater (e.g. =+1w=) preserved.  The redundant day-of-week name is
@@ -268,10 +277,20 @@ See =M-x customize-group RET org-agenda-kanban RET=.  Key variables:
   =CLOSED= timestamp.  Adjust live with =t d=, or click the =done <=Nd x=
   header chip to show all done cards.
 - ~org-agenda-kanban-priority-style~ — how a card reflects its Org priority
-  (default ~cookie~).  Colors come from Org's own ~org-priority-faces~ (with
-  the ~org-priority~ face as fallback), the same source =org-agenda= uses, so
+  (default ~cookie~).  Colors come from ~org-agenda-kanban-priority-colors~
+  when set, otherwise from Org's own ~org-priority-faces~ (with the
+  ~org-priority~ face as fallback), the same source =org-agenda= uses, so
   priorities look consistent across Org.  Choices: ~cookie~ (color the =[#X]=
-  cookie — the default) or ~nil~ (no priority coloring).
+  cookie — the default), ~background~ (tint the whole card), ~both~, or ~nil~
+  (no priority coloring).  Only cards with an explicit priority cookie are
+  tinted, and a selected card keeps the selection background.  The HTML
+  export applies the same tint.
+- ~org-agenda-kanban-priority-colors~ — alist of =(PRIORITY . COLOR)=, e.g.
+  ~'((?A . "#ff5555") (?B . "orange"))~, used for the cookie and the card
+  tint in preference to ~org-priority-faces~ (default ~nil~).
+- ~org-agenda-kanban-priority-tint~ — how strongly the priority color is
+  blended into the card background, from ~0.0~ to ~1.0~ (default ~0.25~).
+  The blend keeps text readable on both light and dark themes.
 - ~org-agenda-kanban-show-planning~ — show each card's =SCHEDULED= and
   =DEADLINE= timestamps when set (default ~t~).  Each is rendered on its own
   line beneath the title with any repeater preserved.  Set to ~nil~ to hide
