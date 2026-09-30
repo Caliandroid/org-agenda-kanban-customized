@@ -9,7 +9,7 @@ configurable set of Org files.  The board is inspired by the visual polish of
 [[https://github.com/minad/org-modern][org-modern]] and the tag-filtering UX of
 [[https://github.com/skeeto/elfeed][elfeed]].
 
-* Specific Features of my fork
+* Features
 
 ** New in this fork
 
