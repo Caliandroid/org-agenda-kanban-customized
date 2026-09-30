@@ -11,6 +11,61 @@ configurable set of Org files.  The board is inspired by the visual polish of
 
 * Features
 
+** New in this fork ([[https://github.com/Caliandroid/org-agenda-kanban][Caliandroid/org-agenda-kanban]])
+
+#+begin_quote
+*Disclaimer:* the features in this section were added in this fork and are
+not part of the original package by Gregg Rothmeier.  They were created with
+the assistance of [[https://claude.com/claude-code][Claude Code]], Anthropic's AI coding assistant.
+#+end_quote
+
+- *Add notes from the board (=z=).*  Press =z= (as in =org-agenda=) to run
+  =org-add-note= on the selected card.  Type the note and press =C-c C-c=;
+  it is timestamped and filed under the source heading — in its
+  =:LOGBOOK:= drawer when ~org-log-into-drawer~ is set.
+- *Export to HTML (=e=).*  Press =e= (=M-x org-agenda-kanban-export-html=) to
+  save the board as it is currently displayed — columns, sorting, and active
+  filters — as one self-contained, responsive HTML file.  All CSS is embedded
+  and nothing is loaded remotely, so the page works offline in any modern
+  browser and can be mailed or shared as-is.  Priority and tag colors follow
+  your Org configuration, due/overdue dates are highlighted, the page follows
+  the reader's light/dark preference, and on narrow screens the columns stack
+  vertically.  With =C-u e= the file is also opened in your browser.
+- *Narrowed task view, e.g. for screen sharing.*  Press =N= to open the
+  selected card narrowed to just that task: the source buffer shows only the
+  card's subtree, fully expanded, so nothing else is on screen.  To make this
+  the default for =RET=, =o= and double-click, set:
+  #+begin_src emacs-lisp
+  (setq org-agenda-kanban-visit-narrow t)
+  #+end_src
+  Widen again with =C-x n w=; the next visit from the board widens
+  automatically.  Follow-mode previews are never narrowed.
+- *Color cards by priority.*  Besides coloring the =[#X]= cookie, whole cards
+  can be tinted by priority.  The color is blended into the card background,
+  so text stays readable on light and dark themes; a selected card keeps the
+  selection color.  Colors can be set just for the board (they take
+  precedence over ~org-priority-faces~), and the HTML export uses the same
+  tint:
+  #+begin_src emacs-lisp
+  (setq org-agenda-kanban-priority-style 'both      ; cookie | background | both | nil
+        org-agenda-kanban-priority-colors '((?A . "#ff5555")
+                                            (?B . "#ffb86c")
+                                            (?C . "#f1fa8c"))
+        org-agenda-kanban-priority-tint 0.25)     ; tint strength 0.0-1.0
+  #+end_src
+- *Done date from state-change notes.*  The done-date filter
+  (~org-agenda-kanban-done-within-days~) no longer requires a =CLOSED=
+  timestamp.  It also reads the notes Org writes when a done keyword logs its
+  state change (e.g. =DONE(d@/!)=), such as
+  =- State "DONE"       from "IN-PROGRESS" [2025-04-03 Thu 17:24]=, inside a
+  =:LOGBOOK:= drawer or directly under the heading.  The most recent
+  completion wins, so a reopened and re-finished task is dated by its last
+  completion.  See [[*Recording when a TODO is marked done][Recording when a TODO is marked done]].
+
+-----
+
+** Original features
+
 - *Columns from your workflow.*  Defaults to the keywords in
   ~org-todo-keywords~; fully configurable.
 - *Live data.*  Cards are collected from files or directories in
@@ -35,16 +90,7 @@ configurable set of Org files.  The board is inspired by the visual polish of
   =org-agenda=.
 - *Priority coloring.*  The =[#X]= priority cookie on each card is colored
   using your configured ~org-priority-faces~ — the same source =org-agenda=
-  uses — and cards can optionally be tinted by priority as a whole (see
-  ~org-agenda-kanban-priority-style~).  Colors can also be set just for the
-  board with ~org-agenda-kanban-priority-colors~:
-  #+begin_src emacs-lisp
-  (setq org-agenda-kanban-priority-style 'both      ; cookie + card tint
-        org-agenda-kanban-priority-colors '((?A . "#ff5555")
-                                            (?B . "#ffb86c")
-                                            (?C . "#f1fa8c"))
-        org-agenda-kanban-priority-tint 0.25)     ; tint strength 0.0-1.0
-  #+end_src
+  uses (see ~org-agenda-kanban-priority-style~).
 - *Planning timestamps.*  A card shows its =SCHEDULED= and =DEADLINE=
   timestamps when set, each on its own line beneath the title, with any
   repeater (e.g. =+1w=) preserved.  The redundant day-of-week name is
@@ -64,19 +110,6 @@ configurable set of Org files.  The board is inspired by the visual polish of
   same keys =org-agenda= uses.  Both run Org's normal =org-schedule= /
   =org-deadline= prompts and write back to the source heading (=C-u=
   removes the timestamp).
-- *Add notes from the board.*  Press =z= (as in =org-agenda=) to run
-  =org-add-note= on the selected card.  Type the note and press =C-c C-c=;
-  it is timestamped and filed under the source heading — in its
-  =:LOGBOOK:= drawer when ~org-log-into-drawer~ is set.
-- *Export to HTML.*  Press =e= (=M-x org-agenda-kanban-export-html=) to save
-  the board as it is currently displayed — columns, sorting, and active
-  filters — as one self-contained, responsive HTML file.  All CSS is
-  embedded and nothing is loaded remotely, so the page works offline in any
-  modern browser and can be mailed or shared as-is.  Priority and tag colors
-  follow ~org-priority-faces~ / ~org-tag-faces~, due/overdue dates are
-  highlighted, the page follows the reader's light/dark preference, and on
-  narrow screens the columns stack vertically.  With =C-u e= the file is also
-  opened in your browser.
 - *Sorting.*  Within each column, cards are sorted by Org priority (highest
   first) by default.  Like ~org-agenda~, an unprioritized card is treated as
   ~org-default-priority~ (normally =[#B]=), so it interleaves with explicit
