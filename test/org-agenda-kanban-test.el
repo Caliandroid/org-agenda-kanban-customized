@@ -1013,6 +1013,50 @@ The selection (stable ID) survives the edit."
                            (overlay-buffer org-agenda-kanban--follow-overlay)))))
     (org-agenda-kanban--follow-unhighlight)))
 
+(ert-deftest org-agenda-kanban-test-show-heading-narrow ()
+  "NARROW restricts the source buffer to the card's subtree; a later
+plain visit widens it again."
+  (with-temp-buffer
+    (insert "* TODO First\n* TODO Task\n  body\n** Sub\n* TODO Other\n")
+    (org-mode)
+    (let ((org-agenda-kanban--follow-mode nil)
+          (src (current-buffer))
+          (task (save-excursion (goto-char (point-min))
+                                (search-forward "* TODO Task")
+                                (line-beginning-position))))
+      (cl-letf (((symbol-function 'recenter) #'ignore)
+                ((symbol-function 'pop-to-buffer-same-window)
+                 (lambda (buf &rest _) (set-buffer buf))))
+        (org-agenda-kanban--show-heading (cons src task) nil t)
+        (should (buffer-narrowed-p))
+        (should (equal (buffer-string) "* TODO Task\n  body\n** Sub"))
+        (should (looking-at-p "Task"))
+        (org-agenda-kanban--show-heading (cons src task) nil)
+        (should-not (buffer-narrowed-p))))))
+
+(ert-deftest org-agenda-kanban-test-visit-card-narrow-option ()
+  "`org-agenda-kanban-visit-narrow' makes a plain visit narrow; the
+narrowed command narrows even when the option is off."
+  (let ((card (org-agenda-kanban-test--card "Task" "TODO" nil nil))
+        (calls '()))
+    (cl-letf (((symbol-function 'org-agenda-kanban--selected-card)
+               (lambda () card))
+              ((symbol-function 'org-agenda-kanban--locate)
+               (lambda (_) (cons (current-buffer) 1)))
+              ((symbol-function 'org-agenda-kanban--show-heading)
+               (lambda (_loc other narrow) (push (list other narrow) calls))))
+      (let ((org-agenda-kanban-visit-narrow nil))
+        (org-agenda-kanban-visit-card)
+        (org-agenda-kanban-visit-card-narrowed)
+        (org-agenda-kanban-visit-card-narrowed t))
+      (let ((org-agenda-kanban-visit-narrow t))
+        (org-agenda-kanban-visit-card)))
+    (should (equal (nreverse calls) '((nil nil) (nil t) (t t) (nil t))))))
+
+(ert-deftest org-agenda-kanban-test-visit-narrowed-key-bound ()
+  (should (eq (lookup-key org-agenda-kanban-mode-map "N")
+              #'org-agenda-kanban-visit-card-narrowed)))
+
 (ert-deftest org-agenda-kanban-test-follow-mode-disable-clears-highlight ()
   "Disabling follow-mode removes the source-buffer highlight."
   (with-temp-buffer

@@ -207,6 +207,7 @@ repeaters, inline markup, and recently-closed cards.
 | =k= / =c=                | Run =org-capture=                             |
 | =RET= / =o=              | Visit card's heading in its Org file        |
 | =double-mouse-1=       | Visit card's heading in its Org file        |
+| =N=                    | Visit card narrowed to just that task       |
 | =\=                    | Toggle a tag in the *include* filter (prompt) |
 | =/ t= / =/ +=            | Toggle a tag in the *include* filter (prompt) |
 | =/ -=                  | Toggle a tag in the *exclude* filter (prompt) |
@@ -219,6 +220,12 @@ repeaters, inline markup, and recently-closed cards.
 
 With a prefix argument (=C-u RET= / =C-u o=), the card's heading opens in
 another window instead of the current one.
+
+To show nothing but the task — handy when sharing your screen — press =N=:
+the source buffer is narrowed to the card's subtree and fully expanded.  Set
+~org-agenda-kanban-visit-narrow~ to ~t~ to make =RET=, =o= and double-click
+always do this.  Widen again with =C-x n w=; the next visit from the board
+widens automatically.  Follow-mode previews are never narrowed.
 
 Follow-mode (=F=) mirrors Org Agenda: when enabled, changing the selected card
 automatically previews its source Org heading in another window while keeping
@@ -293,6 +300,9 @@ See =M-x customize-group RET org-agenda-kanban RET=.  Key variables:
   day-of-week name from planning timestamps (e.g. =2026-06-03 11:00 +1w=
   instead of =2026-06-03 Wed 11:00 +1w=) so they fit the card width.  Set to
   ~nil~ to keep the weekday name.
+- ~org-agenda-kanban-visit-narrow~ — when non-nil, visiting a card
+  (=RET=, =o=, double-click) narrows its source buffer to that task's subtree
+  (default ~nil~).  =N= always narrows, whatever this is set to.
 - ~org-agenda-kanban-html-export-file~ — default file name offered by
   =org-agenda-kanban-export-html= (default ="kanban.html"=, relative to the
   board buffer's directory).

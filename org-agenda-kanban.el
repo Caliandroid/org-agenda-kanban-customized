@@ -272,6 +272,18 @@ a float, that fraction of the default line height) between lines."
                  (const :tag "Inherit the frame's line-spacing" nil))
   :group 'org-agenda-kanban)
 
+(defcustom org-agenda-kanban-visit-narrow nil
+  "When non-nil, visiting a card narrows its source buffer to the task.
+This applies to \\`RET', \\`o' and double-click: the source buffer is
+narrowed to the card's subtree (see `org-narrow-to-subtree') and the
+subtree is fully expanded, so nothing but that task is on screen, which
+is handy when sharing your screen.  Widen again with \\[widen]; the next
+visit from the board widens automatically.  Follow-mode previews are
+never narrowed.  The `org-agenda-kanban-visit-card-narrowed' command
+narrows regardless of this option."
+  :type 'boolean
+  :group 'org-agenda-kanban)
+
 (defcustom org-agenda-kanban-html-export-file "kanban.html"
   "Default file name offered by `org-agenda-kanban-export-html'.
 A relative name is resolved against the board buffer's
@@ -1149,12 +1161,14 @@ first visible card is selected, or nil when nothing is visible."
     (overlay-put org-agenda-kanban--follow-overlay 'org-agenda-kanban t))
   (move-overlay org-agenda-kanban--follow-overlay beg end buffer))
 
-(defun org-agenda-kanban--show-heading (loc keep-board-focus)
+(defun org-agenda-kanban--show-heading (loc keep-board-focus &optional narrow)
   "Show the source heading at LOC.
 LOC is a cons of (BUFFER . POSITION).  When KEEP-BOARD-FOCUS is non-nil,
 display the source buffer in another window and keep focus on the board.
-While follow-mode is active the heading line is highlighted so the
-selected card's row is easy to spot in the source buffer."
+When NARROW is non-nil, narrow the source buffer to the heading's
+subtree and expand it fully.  While follow-mode is active the heading
+line is highlighted so the selected card's row is easy to spot in the
+source buffer."
   (let ((buf (car loc))
         (pos (cdr loc))
         (follow org-agenda-kanban--follow-mode))
@@ -1162,9 +1176,14 @@ selected card's row is easy to spot in the source buffer."
                   (widen)
                   (goto-char pos)
                   (when (derived-mode-p 'org-mode)
-                    (org-fold-show-context 'agenda)
-                    (recenter (/ (window-height) 2))
                     (org-back-to-heading t)
+                    (if narrow
+                        (progn
+                          (org-narrow-to-subtree)
+                          (org-fold-show-subtree)
+                          (set-window-start (selected-window) (point-min)))
+                      (org-fold-show-context 'agenda)
+                      (recenter (/ (window-height) 2)))
                     (let ((case-fold-search nil))
                       (when (re-search-forward org-complex-heading-regexp nil t)
                         (goto-char (match-beginning 4)))))
@@ -1509,18 +1528,34 @@ buffer is left unsaved."
 
 ;;;; Visiting the source heading
 
-(defun org-agenda-kanban-visit-card (&optional other-window)
+(defun org-agenda-kanban-visit-card (&optional other-window narrow)
   "Visit the selected card's heading in its source Org file.
 With a prefix argument, or when OTHER-WINDOW is non-nil, show the
-file in another window and keep focus on the board."
+file in another window and keep focus on the board.  When NARROW is
+non-nil, or `org-agenda-kanban-visit-narrow' is set, narrow the source
+buffer to the card's subtree."
   (interactive "P")
   (let* ((card (org-agenda-kanban--selected-card))
-         (loc (and card (org-agenda-kanban--locate card))))
+         (loc (and card (org-agenda-kanban--locate card)))
+         (narrow (or narrow org-agenda-kanban-visit-narrow)))
     (unless card (user-error "No card selected"))
     (unless loc
       (user-error "Cannot locate heading for %S; refresh the board"
                   (org-agenda-kanban-card-title card)))
-    (org-agenda-kanban--show-heading loc other-window)))
+    (org-agenda-kanban--show-heading loc other-window narrow)
+    (when narrow
+      (message "Narrowed to %S; widen with %s"
+               (org-agenda-kanban-card-title card)
+               (substitute-command-keys "\\[widen]")))))
+
+(defun org-agenda-kanban-visit-card-narrowed (&optional other-window)
+  "Visit the selected card's heading, narrowed to just that task.
+The source buffer is narrowed to the card's subtree and fully
+expanded, regardless of `org-agenda-kanban-visit-narrow'.  With a
+prefix argument, or when OTHER-WINDOW is non-nil, show it in another
+window and keep focus on the board."
+  (interactive "P")
+  (org-agenda-kanban-visit-card other-window t))
 
 (defun org-agenda-kanban--mouse-visit (event)
   "Select the card under EVENT and visit its source heading.
@@ -2057,6 +2092,7 @@ With a prefix argument OPEN, also open FILE in a browser."
     (define-key map "k" #'org-capture)
     (define-key map "c" #'org-capture)
     (define-key map "o" #'org-agenda-kanban-visit-card)
+    (define-key map "N" #'org-agenda-kanban-visit-card-narrowed)
     ;; Filter family lives under the "/" prefix, mirroring Org Agenda's
     ;; `org-agenda-filter' key.  "\\" is a shortcut for the most common
     ;; tag-filter action, matching Agenda's `org-agenda-filter-by-tag'.
