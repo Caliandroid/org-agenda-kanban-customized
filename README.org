@@ -11,10 +11,11 @@ configurable set of Org files.  The board is inspired by the visual polish of
 
 * Specific Features of my fork
 
-** New in this fork ([[https://github.com/Caliandroid/org-agenda-kanban][Caliandroid/org-agenda-kanban]])
+** New in this fork
 
 #+begin_quote
-*Disclaimer:* the features in this section were added in this fork and are
+*Disclaimer:* the features in this section were added in the fork
+[[https://github.com/Caliandroid/org-agenda-kanban][Caliandroid/org-agenda-kanban]] and are
 not part of the original package by Gregg Rothmeier.  They were created with
 the assistance of [[https://claude.com/claude-code][Claude Code]], Anthropic's AI coding assistant.
 #+end_quote
@@ -128,32 +129,78 @@ the assistance of [[https://claude.com/claude-code][Claude Code]], Anthropic's A
 
 * Installation
 
-The package lives at [[https://github.com/greggroth/org-agenda-kanban][github.com/greggroth/org-agenda-kanban]].
+This fork lives at [[https://github.com/Caliandroid/org-agenda-kanban][github.com/Caliandroid/org-agenda-kanban]].  The original
+package is at [[https://github.com/greggroth/org-agenda-kanban][github.com/greggroth/org-agenda-kanban]]; to get the features listed
+under [[*New in this fork][New in this fork]], install from the fork's URL as shown below.
 
 ** With ~use-package~ and ~:vc~ (Emacs 30+)
 
 #+begin_src emacs-lisp
 (use-package org-agenda-kanban
-  :vc (:url "https://github.com/greggroth/org-agenda-kanban" :rev :newest)
-  :commands (org-agenda-kanban))
+  :vc (:url "https://github.com/Caliandroid/org-agenda-kanban" :rev :newest)
+  :commands (org-agenda-kanban)
+  :custom
+  ;; Optional fork settings, see "New in this fork".
+  (org-agenda-kanban-visit-narrow t)
+  (org-agenda-kanban-priority-style 'both))
 #+end_src
 
 ** With ~package-vc-install~ (Emacs 29+)
 
 #+begin_src emacs-lisp
-(package-vc-install "https://github.com/greggroth/org-agenda-kanban")
+(package-vc-install "https://github.com/Caliandroid/org-agenda-kanban")
 #+end_src
 
 ** Manual clone (any supported Emacs, 28.1+)
 
 #+begin_src sh
-git clone https://github.com/greggroth/org-agenda-kanban.git ~/code/org-agenda-kanban
+git clone https://github.com/Caliandroid/org-agenda-kanban.git ~/code/org-agenda-kanban
 #+end_src
 
 #+begin_src emacs-lisp
 (add-to-list 'load-path "~/code/org-agenda-kanban")
 (require 'org-agenda-kanban)
 #+end_src
+
+Or with ~use-package~:
+
+#+begin_src emacs-lisp
+(use-package org-agenda-kanban
+  :load-path "~/code/org-agenda-kanban"
+  :commands (org-agenda-kanban))
+#+end_src
+
+Update later with =git pull= in that directory.
+
+** Switching from the original package to this fork
+
+Both use the package name ~org-agenda-kanban~, and Emacs does not change the
+source of an already installed package when you edit the URL in your config.
+Remove the original first, otherwise it keeps being loaded:
+
+1. =M-x package-delete RET org-agenda-kanban RET= (removes
+   =~/.emacs.d/elpa/org-agenda-kanban=).
+2. Point your configuration at the fork: change the ~:vc~ / ~package-vc-install~
+   URL to =https://github.com/Caliandroid/org-agenda-kanban=, and check
+   ~package-vc-selected-packages~ in your ~custom-set-variables~ — if it still
+   lists =greggroth/org-agenda-kanban=, change that URL too (or remove the
+   entry when you use a manual clone).
+3. Restart Emacs; ~use-package~ / ~package-vc-install~ now installs the fork.
+
+Check which copy is active with =M-x find-library RET org-agenda-kanban RET=:
+the opened file should be from the fork (for a =package-vc= install, =git remote
+-v= in its directory shows the Caliandroid URL).
+
+If you prefer to keep an existing =package-vc= checkout, you can instead
+re-point it and update in place:
+
+#+begin_src sh
+cd ~/.emacs.d/elpa/org-agenda-kanban
+git remote set-url origin https://github.com/Caliandroid/org-agenda-kanban
+git pull
+#+end_src
+
+then run =M-x package-vc-rebuild RET org-agenda-kanban RET= and restart Emacs.
 
 * Org configuration
 
