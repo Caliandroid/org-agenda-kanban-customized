@@ -82,6 +82,9 @@
   "Set SYMBOL to VALUE after validating the column gap."
   (set-default symbol (org-agenda-kanban--validate-column-gap value)))
 
+(defvar org-agenda-kanban-column-width)
+(defvar org-agenda-kanban-column-gap)
+
 (defun org-agenda-kanban--validate-dimensions ()
   "Validate board dimensions and return a cons of (WIDTH . GAP)."
   (cons (org-agenda-kanban--validate-column-width
@@ -868,12 +871,12 @@ distinct warning face, mirroring `org-agenda'."
   (when org-agenda-kanban-show-planning
     (let ((now (or now (current-time)))
           (lines '()))
-      (when-let ((d (org-agenda-kanban-card-deadline card)))
+      (when-let* ((d (org-agenda-kanban-card-deadline card)))
         (push (org-agenda-kanban--planning-line
                org-agenda-kanban-deadline-glyph d
                (org-agenda-kanban--deadline-face d now) content-width)
               lines))
-      (when-let ((s (org-agenda-kanban-card-scheduled card)))
+      (when-let* ((s (org-agenda-kanban-card-scheduled card)))
         (push (org-agenda-kanban--planning-line
                org-agenda-kanban-scheduled-glyph s
                (org-agenda-kanban--scheduled-face s now) content-width)
@@ -1169,7 +1172,7 @@ selected card's row is easy to spot in the source buffer."
 (defun org-agenda-kanban--follow-selection ()
   "Preview the selected card's source heading when follow-mode is active."
   (when org-agenda-kanban--follow-mode
-    (if-let ((card (org-agenda-kanban--selected-card)))
+    (if-let* ((card (org-agenda-kanban--selected-card)))
         (let ((loc (org-agenda-kanban--locate card)))
           (if loc
               (org-agenda-kanban--show-heading loc t)
@@ -1318,7 +1321,7 @@ Matches on the stable card ID, which is derived from the outline path."
      (org-map-entries
       (lambda ()
         (unless found
-          (when-let ((todo (org-get-todo-state)))
+          (when-let* ((todo (org-get-todo-state)))
             (let ((probe (org-agenda-kanban--card-at-point todo seen)))
               (when (equal (org-agenda-kanban-card-id probe) target)
                 (setq found (point)))))))
@@ -1482,6 +1485,15 @@ removes the entry's DEADLINE timestamp."
                  (let ((current-prefix-arg arg))
                    (call-interactively #'org-deadline))))))
     (message "Set deadline of \"%s\"" (org-agenda-kanban-card-title card))))
+
+(defun org-agenda-kanban-add-note ()
+  "Add a timestamped note to the selected card via `org-add-note'.
+Mirrors \\[org-agenda-add-note] in `org-agenda': a note buffer pops up,
+and C-c C-c files the timestamped note under the source heading
+\(in its LOGBOOK drawer when `org-log-into-drawer' is set).  The source
+buffer is left unsaved."
+  (interactive)
+  (org-agenda-kanban--edit-at-card #'org-add-note))
 
 ;;;; Visiting the source heading
 
@@ -1666,6 +1678,7 @@ Re-collects the board so the new window takes effect."
     (define-key map ":" #'org-agenda-kanban-set-tags)
     (define-key map (kbd "C-c C-s") #'org-agenda-kanban-schedule)
     (define-key map (kbd "C-c C-d") #'org-agenda-kanban-deadline)
+    (define-key map "z" #'org-agenda-kanban-add-note)
     (define-key map "s" #'org-save-all-org-buffers)
     (define-key map [mouse-1] #'org-agenda-kanban--mouse-click)
     (define-key map [double-mouse-1] #'org-agenda-kanban--mouse-visit)

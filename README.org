@@ -55,6 +55,10 @@ configurable set of Org files.  The board is inspired by the visual polish of
   same keys =org-agenda= uses.  Both run Org's normal =org-schedule= /
   =org-deadline= prompts and write back to the source heading (=C-u=
   removes the timestamp).
+- *Add notes from the board.*  Press =z= (as in =org-agenda=) to run
+  =org-add-note= on the selected card.  Type the note and press =C-c C-c=;
+  it is timestamped and filed under the source heading — in its
+  =:LOGBOOK:= drawer when ~org-log-into-drawer~ is set.
 - *Sorting.*  Within each column, cards are sorted by Org priority (highest
   first) by default.  Like ~org-agenda~, an unprioritized card is treated as
   ~org-default-priority~ (normally =[#B]=), so it interleaves with explicit
@@ -188,6 +192,7 @@ repeaters, inline markup, and recently-closed cards.
 | =:=                    | Set the selected card's tags                |
 | =C-c C-s=              | Set the selected card's =SCHEDULED= time      |
 | =C-c C-d=              | Set the selected card's =DEADLINE=            |
+| =z=                    | Add a timestamped note to the selected card |
 | =s=                    | Save all Org buffers                        |
 | =k= / =c=                | Run =org-capture=                             |
 | =RET= / =o=              | Visit card's heading in its Org file        |

@@ -710,7 +710,7 @@ against regressing the defaults to non-ASCII."
 
 (defun org-agenda-kanban-test--kill-file-buffer (file)
   "Kill FILE's visiting buffer without saving test changes."
-  (when-let ((buf (find-buffer-visiting file)))
+  (when-let* ((buf (find-buffer-visiting file)))
     (with-current-buffer buf (set-buffer-modified-p nil))
     (kill-buffer buf)))
 
@@ -889,6 +889,48 @@ The selection (stable ID) survives the edit."
               #'org-agenda-kanban-priority-up))
   (should (eq (lookup-key org-agenda-kanban-mode-map "-")
               #'org-agenda-kanban-priority-down)))
+
+;;;; Adding notes
+
+(ert-deftest org-agenda-kanban-test-add-note-key-bound ()
+  "`z' adds a note to the selected card, like `org-agenda'."
+  (should (eq (lookup-key org-agenda-kanban-mode-map "z")
+              #'org-agenda-kanban-add-note)))
+
+(ert-deftest org-agenda-kanban-test-add-note-writes-logbook ()
+  "`add-note' files a timestamped note in the source LOGBOOK drawer."
+  (let* ((org-todo-keywords '((sequence "TODO" "|" "DONE")))
+         (org-log-into-drawer t)
+         (file (make-temp-file "okm-note" nil ".org"
+                               "* TODO write tests\n")))
+    (unwind-protect
+        (let ((org-agenda-kanban-files (list file))
+              (org-agenda-kanban-columns '("TODO" "DONE")))
+          (with-temp-buffer
+            (cl-letf (((symbol-function 'org-agenda-kanban--render) #'ignore))
+              (setq org-agenda-kanban--cards (org-agenda-kanban--collect))
+              (setq org-agenda-kanban--selected-id
+                    (org-agenda-kanban-card-id (car org-agenda-kanban--cards)))
+              (org-agenda-kanban-add-note)
+              ;; `org-add-note' defers the note buffer to `post-command-hook'.
+              (should (memq #'org-add-log-note post-command-hook))
+              (org-add-log-note)
+              (with-current-buffer "*Org Note*"
+                (goto-char (point-max))
+                (insert "Blocked on review")
+                (org-ctrl-c-ctrl-c))))
+          (should (equal (org-agenda-kanban-test--file-contents file)
+                         "* TODO write tests\n"))
+          (with-current-buffer (find-buffer-visiting file)
+            (should (buffer-modified-p))
+            (should (string-match-p
+                     (concat "\\`\\* TODO write tests\n:LOGBOOK:\n"
+                             "- Note taken on \\[[^]]+\\] \\\\\\\\\n"
+                             " *Blocked on review\n:END:\n")
+                     (buffer-string)))))
+      (remove-hook 'post-command-hook #'org-add-log-note)
+      (org-agenda-kanban-test--kill-file-buffer file)
+      (delete-file file))))
 
 (ert-deftest org-agenda-kanban-test-follow-key-bound ()
   "`F' toggles kanban follow-mode."
