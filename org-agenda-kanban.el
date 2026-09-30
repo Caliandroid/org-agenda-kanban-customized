@@ -272,6 +272,18 @@ a float, that fraction of the default line height) between lines."
                  (const :tag "Inherit the frame's line-spacing" nil))
   :group 'org-agenda-kanban)
 
+(defcustom org-agenda-kanban-html-export-file "kanban.html"
+  "Default file name offered by `org-agenda-kanban-export-html'.
+A relative name is resolved against the board buffer's
+`default-directory'."
+  :type 'file
+  :group 'org-agenda-kanban)
+
+(defcustom org-agenda-kanban-html-title "Kanban"
+  "Title shown at the top of, and used as the <title> of, the HTML export."
+  :type 'string
+  :group 'org-agenda-kanban)
+
 ;;;; Faces
 
 ;; All board faces are defined by INHERITANCE from standard faces rather than
@@ -1656,6 +1668,364 @@ Re-collects the board so the new window takes effect."
                 (mapconcat #'identity (nreverse chips) " ")
               (propertize "none" 'face 'org-agenda-kanban-empty)))))
 
+;;;; HTML export
+
+(defconst org-agenda-kanban--html-css
+  ":root{--bg:#f5f6f8;--fg:#1f2328;--muted:#656d76;--col:#eaecf0;--card:#fff;\
+--border:#d0d7de;--shadow:0 1px 2px rgba(31,35,40,.08),0 1px 3px rgba(31,35,40,.06);\
+--accent:#0969da;--overdue:#cf222e;--today:#9a6700;\
+--prio-a:#cf222e;--prio-b:#bf8700;--prio-c:#0969da;--prio-x:#8c959f}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8d96a0;\
+--col:#161b22;--card:#1f242c;--border:#30363d;--shadow:0 1px 3px rgba(0,0,0,.5);\
+--accent:#4493f8;--overdue:#f85149;--today:#d29922;\
+--prio-a:#f85149;--prio-b:#d29922;--prio-c:#4493f8;--prio-x:#6e7681}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;padding:clamp(1rem,3vw,2rem);background:var(--bg);color:var(--fg);\
+font:15px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem 1.25rem;margin-bottom:1.25rem}
+h1{margin:0;font-size:1.6rem;letter-spacing:-.01em}
+.meta{color:var(--muted);font-size:.875rem}
+.filters{display:flex;flex-wrap:wrap;gap:.375rem;list-style:none;margin:0;padding:0}
+.filters li{padding:.125rem .6rem;border:1px solid var(--border);border-radius:999px;\
+font-size:.8rem;background:var(--card)}
+.filters .exclude{text-decoration:line-through}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -.75rem;padding-bottom:.5rem}
+table.board{width:100%;border-collapse:separate;border-spacing:.75rem 0;table-layout:fixed}
+th{text-align:left;font-size:.8rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;\
+color:var(--muted);background:var(--col);padding:.75rem 1rem .5rem;border-radius:.75rem .75rem 0 0}
+.count{display:inline-block;min-width:1.6em;margin-left:.4rem;padding:0 .4rem;border-radius:999px;\
+background:var(--border);color:var(--fg);text-align:center;font-size:.75rem;letter-spacing:0}
+td{vertical-align:top;background:var(--col);padding:.25rem .5rem .75rem;border-radius:0 0 .75rem .75rem}
+ul.cards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.5rem}
+.card{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--prio,var(--border));\
+border-radius:.5rem;padding:.6rem .75rem;box-shadow:var(--shadow);overflow-wrap:anywhere}
+.prio-a{--prio:var(--prio-a)}.prio-b{--prio:var(--prio-b)}.prio-c{--prio:var(--prio-c)}
+.title{font-weight:500}
+.prio{display:inline-block;margin-right:.35rem;padding:0 .35rem;border-radius:.3rem;\
+background:var(--prio,var(--prio-x));color:#fff;font-size:.7rem;font-weight:700;vertical-align:.1em}
+.done .title{color:var(--muted);text-decoration:line-through}
+.plan{margin-top:.35rem;font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.plan b{font-weight:600;margin-right:.3rem}
+.plan.today{color:var(--today)}
+.plan.overdue{color:var(--overdue);font-weight:600}
+ul.tags{list-style:none;margin:.5rem 0 0;padding:0;display:flex;flex-wrap:wrap;gap:.25rem}
+.tag{font-size:.72rem;padding:.05rem .45rem;border-radius:999px;\
+border:1px solid var(--tag,var(--border));color:var(--tag,var(--muted))}
+.src{margin-top:.4rem;font-size:.72rem;color:var(--muted)}
+.empty{color:var(--muted);font-style:italic;padding:.5rem .25rem;font-size:.85rem}
+code{font:.85em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:.05em .3em;\
+border-radius:.25rem;background:var(--col)}
+a{color:var(--accent)}
+footer{margin-top:1.5rem;color:var(--muted);font-size:.75rem}
+@media (max-width:760px){.scroll{overflow:visible;margin:0}\
+table.board,table.board tbody,table.board tr,table.board td{display:block;width:100%;min-width:0!important}\
+table.board{border-spacing:0}\
+thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}\
+td{border-radius:.75rem;margin-bottom:1rem;padding:.75rem}\
+td::before{content:attr(data-label);display:block;font-size:.8rem;font-weight:600;letter-spacing:.06em;\
+text-transform:uppercase;color:var(--muted);margin:0 .25rem .6rem}}
+@media print{body{background:#fff;color:#000;padding:0}.scroll{overflow:visible}\
+.card{box-shadow:none;break-inside:avoid}}
+"
+  "Stylesheet embedded in the HTML export.
+It references no remote fonts or resources, adapts to the reader's
+light/dark preference, and collapses the board table into stacked
+columns on narrow screens.")
+
+(defun org-agenda-kanban--html-escape (str)
+  "Return STR with HTML special characters replaced by entities."
+  (replace-regexp-in-string
+   "[&<>\"']"
+   (lambda (m)
+     (pcase m ("&" "&amp;") ("<" "&lt;") (">" "&gt;") ("\"" "&quot;") (_ "&#39;")))
+   (substring-no-properties str) t t))
+
+(defun org-agenda-kanban--css-color (spec)
+  "Return a CSS hex color for SPEC, or nil when none can be derived.
+SPEC is a value as found in `org-priority-faces' or `org-tag-faces': a
+color name, a face symbol, a face attribute plist, or a list of those.
+Faces contribute their foreground color."
+  (cond
+   ((null spec) nil)
+   ((stringp spec)
+    ;; Resolve names through the X color table rather than `color-values'
+    ;; alone: on a tty or in batch the latter approximates to the nearest
+    ;; terminal color (\"dark orange\" becomes yellow).
+    (let ((rgb (or (if (string-prefix-p "#" spec)
+                       (tty-color-standard-values (downcase spec))
+                     (cdr (assoc (downcase (replace-regexp-in-string " " "" spec))
+                                 color-name-rgb-alist)))
+                   (and (display-graphic-p)
+                        (ignore-errors (color-values spec))))))
+      (and rgb (apply #'format "#%02x%02x%02x"
+                      (mapcar (lambda (c) (/ c 257)) rgb)))))
+   ((and (symbolp spec) (facep spec))
+    (org-agenda-kanban--css-color (face-foreground spec nil t)))
+   ((and (consp spec) (keywordp (car spec)))
+    (org-agenda-kanban--css-color (plist-get spec :foreground)))
+   ((consp spec)
+    (cl-some #'org-agenda-kanban--css-color spec))))
+
+(defun org-agenda-kanban--face-markup (face)
+  "Return the HTML elements implied by the text property FACE.
+The result is a list drawn from `strong', `em', `u', `s' and `code',
+in that (nesting) order.  Link faces are ignored because links are
+rendered as anchors."
+  (let ((found '()))
+    (cl-labels
+        ((set-p (v) (and v (not (eq v 'unspecified))))
+         (attrs (weight slant underline strike)
+           (when (memq weight '(semi-bold bold extra-bold ultra-bold))
+             (push 'strong found))
+           (when (memq slant '(italic oblique)) (push 'em found))
+           (when (set-p underline) (push 'u found))
+           (when (set-p strike) (push 's found)))
+         (walk (f)
+           (cond
+            ((null f))
+            ((and (consp f) (keywordp (car f)))
+             (attrs (plist-get f :weight) (plist-get f :slant)
+                    (plist-get f :underline) (plist-get f :strike-through)))
+            ((consp f) (mapc #'walk f))
+            ((memq f '(org-code org-verbatim)) (push 'code found))
+            ((eq f 'org-link))
+            ((and (symbolp f) (facep f))
+             (attrs (face-attribute f :weight nil t)
+                    (face-attribute f :slant nil t)
+                    (face-attribute f :underline nil t)
+                    (face-attribute f :strike-through nil t))))))
+      (walk face))
+    (cl-remove-if-not (lambda (tag) (memq tag found))
+                      '(strong em u s code))))
+
+(defun org-agenda-kanban--title-html (title)
+  "Return card TITLE as an HTML fragment.
+When `org-agenda-kanban-render-markup' is non-nil, Org emphasis is
+converted to the matching HTML elements and web links (http, https,
+mailto, ftp) become anchors showing their description; other links show
+only their description.  Otherwise TITLE is escaped verbatim."
+  (let ((fontified (and org-agenda-kanban-render-markup
+                        (let ((org-hide-emphasis-markers t)
+                              (org-link-descriptive t))
+                          (ignore-errors (org-fontify-like-in-org-mode title))))))
+    (if (null fontified)
+        (org-agenda-kanban--html-escape title)
+      (let ((i 0) (n (length fontified)) (parts '()))
+        (while (< i n)
+          ;; Split only where the rendering changes, so a link whose last
+          ;; character merely carries extra font-lock properties stays one
+          ;; anchor.
+          (let ((next (apply #'min n
+                             (delq nil
+                                   (mapcar (lambda (prop)
+                                             (next-single-property-change
+                                              i prop fontified))
+                                           '(face htmlize-link invisible))))))
+            (unless (get-text-property i 'invisible fontified)
+              (let* ((tags (org-agenda-kanban--face-markup
+                            (get-text-property i 'face fontified)))
+                     (uri (plist-get (get-text-property i 'htmlize-link fontified)
+                                     :uri))
+                     (inner (concat
+                             (mapconcat (lambda (tag) (format "<%s>" tag)) tags "")
+                             (org-agenda-kanban--html-escape
+                              (substring fontified i next))
+                             (mapconcat (lambda (tag) (format "</%s>" tag))
+                                        (reverse tags) ""))))
+                (push (if (and (stringp uri)
+                               (string-match-p "\\`\\(?:https?\\|mailto\\|ftp\\):" uri))
+                          (format "<a href=\"%s\">%s</a>"
+                                  (org-agenda-kanban--html-escape uri) inner)
+                        inner)
+                      parts)))
+            (setq i next)))
+        (apply #'concat (nreverse parts))))))
+
+(defun org-agenda-kanban--done-keywords ()
+  "Return the done keywords declared in `org-todo-keywords'.
+These are the keywords after \"|\" in each sequence, or the last keyword
+of a sequence that has no \"|\"."
+  (cl-loop for seq in org-todo-keywords
+           for kws = (mapcar #'org-agenda-kanban--strip-keyword (cdr seq))
+           append (or (cdr (member "|" kws)) (last kws))))
+
+(defun org-agenda-kanban--planning-html (label raw now)
+  "Return an HTML planning line with LABEL for the RAW timestamp.
+The line carries a `today' or `overdue' class relative to NOW."
+  (let* ((ts (org-agenda-kanban--format-timestamp raw))
+         (ts (if org-agenda-kanban-planning-compact
+                 (org-agenda-kanban--strip-weekday ts)
+               ts))
+         (status (org-agenda-kanban--planning-status raw now)))
+    (format "<div class=\"plan%s\"><b>%s</b>%s</div>"
+            (if status (format " %s" status) "")
+            label (org-agenda-kanban--html-escape ts))))
+
+(defun org-agenda-kanban--card-html (card donep now)
+  "Return CARD as an HTML list item.
+DONEP marks a card in a done column.  NOW is the reference time for
+due/overdue planning classes."
+  (let* ((prio (org-agenda-kanban-card-priority card))
+         (prio-color (and prio org-agenda-kanban-priority-style
+                          (org-agenda-kanban--css-color
+                           (org-agenda-kanban--priority-spec prio))))
+         (classes (string-join
+                   (delq nil (list "card"
+                                   (and prio (format "prio-%s"
+                                                     (downcase (char-to-string prio))))
+                                   (and donep "done")))
+                   " "))
+         (file (org-agenda-kanban-card-file card)))
+    (concat
+     (format "<li class=\"%s\"%s>" classes
+             (if prio-color (format " style=\"--prio:%s\"" prio-color) ""))
+     "<div class=\"title\">"
+     (when prio (format "<span class=\"prio\">%c</span>" prio))
+     (org-agenda-kanban--title-html (org-agenda-kanban-card-title card))
+     "</div>"
+     (when org-agenda-kanban-show-planning
+       (concat
+        (when-let* ((d (org-agenda-kanban-card-deadline card)))
+          (org-agenda-kanban--planning-html "Deadline" d now))
+        (when-let* ((s (org-agenda-kanban-card-scheduled card)))
+          (org-agenda-kanban--planning-html "Scheduled" s now))))
+     (when-let* ((tags (org-agenda-kanban-card-tags card)))
+       (concat
+        "<ul class=\"tags\">"
+        (mapconcat
+         (lambda (tag)
+           (let ((color (and org-agenda-kanban-use-tag-faces
+                             (let ((face (org-get-tag-face tag)))
+                               (and (not (eq face 'org-tag))
+                                    (org-agenda-kanban--css-color face))))))
+             (format "<li class=\"tag\"%s>#%s</li>"
+                     (if color (format " style=\"--tag:%s\"" color) "")
+                     (org-agenda-kanban--html-escape tag))))
+         tags "")
+        "</ul>"))
+     (when file
+       (format "<div class=\"src\">%s</div>"
+               (org-agenda-kanban--html-escape (file-name-nondirectory file))))
+     "</li>")))
+
+(defun org-agenda-kanban--filters-html ()
+  "Return the active board filters as an HTML list, or \"\" when none."
+  (let ((chips
+         (append
+          (mapcar (lambda (tag) (format "<li>+#%s</li>"
+                                        (org-agenda-kanban--html-escape tag)))
+                  (reverse org-agenda-kanban--tag-filter))
+          (mapcar (lambda (tag) (format "<li class=\"exclude\">#%s</li>"
+                                        (org-agenda-kanban--html-escape tag)))
+                  (reverse org-agenda-kanban--tag-exclude))
+          (when org-agenda-kanban--priority-filter
+            (list (format "<li>Priority %c</li>" org-agenda-kanban--priority-filter)))
+          (when org-agenda-kanban--done-window
+            (list (format "<li>Done within %d days</li>"
+                          org-agenda-kanban--done-window))))))
+    (if chips
+        (concat "<ul class=\"filters\" aria-label=\"Active filters\">"
+                (apply #'concat chips) "</ul>")
+      "")))
+
+(defun org-agenda-kanban--board-html (&optional now)
+  "Return the current board as a self-contained HTML document string.
+Must be called in the board buffer; it exports the cards currently
+displayed, honoring the active filters, sorting, and column order.  NOW
+is the reference time for due/overdue classes and the generation stamp
+\(defaulting to the current time)."
+  (let* ((now (or now (current-time)))
+         (columns (org-agenda-kanban--columns))
+         (done (org-agenda-kanban--done-keywords))
+         (by-column (mapcar (lambda (col)
+                              (cons col (org-agenda-kanban--cards-for-column
+                                         col org-agenda-kanban--visible)))
+                            columns))
+         (title (org-agenda-kanban--html-escape org-agenda-kanban-html-title))
+         (empty (cond
+                 ((null columns) "No columns configured.")
+                 ((null org-agenda-kanban--cards)
+                  "No TODO cards found in the configured files.")
+                 ((null org-agenda-kanban--visible)
+                  "No cards match the active filters."))))
+    (concat
+     "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
+     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+     "<meta name=\"generator\" content=\"org-agenda-kanban\">\n"
+     "<title>" title "</title>\n"
+     "<style>\n" org-agenda-kanban--html-css "</style>\n</head>\n<body>\n"
+     "<header><h1>" title "</h1>"
+     (format "<span class=\"meta\">%d cards &middot; generated <time datetime=\"%s\">%s</time></span>"
+             (length org-agenda-kanban--visible)
+             (format-time-string "%FT%T%z" now)
+             (format-time-string "%Y-%m-%d %H:%M" now))
+     (org-agenda-kanban--filters-html)
+     "</header>\n<main>\n"
+     (if empty
+         (format "<p class=\"empty\">%s</p>\n" empty)
+       (concat
+        ;; Each column gets a minimum width so a wide board scrolls
+        ;; horizontally instead of squeezing cards unreadably narrow.
+        (format "<div class=\"scroll\"><table class=\"board\" style=\"min-width:%drem\">\n"
+                (* 17 (length columns)))
+        "<thead><tr>"
+        (mapconcat (lambda (cell)
+                     (format "<th scope=\"col\">%s<span class=\"count\">%d</span></th>"
+                             (org-agenda-kanban--html-escape (car cell))
+                             (length (cdr cell))))
+                   by-column "")
+        "</tr></thead>\n<tbody><tr>\n"
+        (mapconcat
+         (lambda (cell)
+           (let ((donep (member (car cell) done)))
+             (concat
+              (format "<td data-label=\"%s (%d)\">"
+                      (org-agenda-kanban--html-escape (car cell))
+                      (length (cdr cell)))
+              (if (cdr cell)
+                  (concat "<ul class=\"cards\">"
+                          (mapconcat (lambda (card)
+                                       (org-agenda-kanban--card-html card donep now))
+                                     (cdr cell) "\n")
+                          "</ul>")
+                "<p class=\"empty\">(empty)</p>")
+              "</td>\n")))
+         by-column "")
+        "</tr></tbody>\n</table></div>\n"))
+     "</main>\n<footer>Exported from Emacs with org-agenda-kanban.</footer>\n"
+     "</body>\n</html>\n")))
+
+(defun org-agenda-kanban--board-buffer ()
+  "Return the kanban board buffer to export, or signal a `user-error'."
+  (let ((buf (if (derived-mode-p 'org-agenda-kanban-mode)
+                 (current-buffer)
+               (get-buffer org-agenda-kanban-buffer-name))))
+    (unless (and buf (with-current-buffer buf
+                       (derived-mode-p 'org-agenda-kanban-mode)))
+      (user-error "No kanban board to export; open one with M-x org-agenda-kanban"))
+    buf))
+
+(defun org-agenda-kanban-export-html (file &optional open)
+  "Export the displayed kanban board to FILE as a single HTML page.
+The page embeds all of its CSS and loads no remote scripts, styles or
+fonts, so it can be opened offline in any modern browser.  The export
+reflects the board as shown: active filters, sorting, and columns.
+With a prefix argument OPEN, also open FILE in a browser."
+  (interactive
+   (list (read-file-name "Export board to HTML file: " nil
+                         (expand-file-name org-agenda-kanban-html-export-file)
+                         nil org-agenda-kanban-html-export-file)
+         current-prefix-arg))
+  (let* ((file (expand-file-name file))
+         (html (with-current-buffer (org-agenda-kanban--board-buffer)
+                 (org-agenda-kanban--board-html))))
+    (let ((coding-system-for-write 'utf-8))
+      (write-region html nil file nil 'silent))
+    (message "Exported kanban board to %s" file)
+    (when open (browse-url-of-file file))
+    file))
+
 ;;;; Major mode and entry point
 
 (defvar org-agenda-kanban-mode-map
@@ -1680,6 +2050,7 @@ Re-collects the board so the new window takes effect."
     (define-key map (kbd "C-c C-d") #'org-agenda-kanban-deadline)
     (define-key map "z" #'org-agenda-kanban-add-note)
     (define-key map "s" #'org-save-all-org-buffers)
+    (define-key map "e" #'org-agenda-kanban-export-html)
     (define-key map [mouse-1] #'org-agenda-kanban--mouse-click)
     (define-key map [double-mouse-1] #'org-agenda-kanban--mouse-visit)
     (define-key map (kbd "RET") #'org-agenda-kanban-visit-card)

@@ -1088,5 +1088,130 @@ The selection (stable ID) survives the edit."
                   #'org-agenda-kanban-toggle-tag))
   (should-not (keymapp (lookup-key org-agenda-kanban-mode-map "t"))))
 
+;;;; HTML export
+
+(ert-deftest org-agenda-kanban-test-html-escape ()
+  (should (equal (org-agenda-kanban--html-escape "<a href=\"x\">&'</a>")
+                 "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;")))
+
+(ert-deftest org-agenda-kanban-test-css-color ()
+  "Color names resolve exactly even without a graphical display."
+  (should (equal (org-agenda-kanban--css-color "dark orange") "#ff8c00"))
+  (should (equal (org-agenda-kanban--css-color "Red") "#ff0000"))
+  (should (equal (org-agenda-kanban--css-color "#00FF00") "#00ff00"))
+  (should (equal (org-agenda-kanban--css-color '(:foreground "blue" :weight bold))
+                 "#0000ff"))
+  (should (equal (org-agenda-kanban--css-color '(nil "red")) "#ff0000"))
+  (should-not (org-agenda-kanban--css-color "not-a-color"))
+  (should-not (org-agenda-kanban--css-color nil)))
+
+(ert-deftest org-agenda-kanban-test-title-html-markup ()
+  (let ((org-agenda-kanban-render-markup t))
+    (should (equal (org-agenda-kanban--title-html "a *b* /c/ ~d~ +e+")
+                   "a <strong>b</strong> <em>c</em> <code>d</code> <s>e</s>"))
+    ;; A link renders as one anchor showing its description.
+    (should (equal (org-agenda-kanban--title-html
+                    "see [[https://example.com/a?b=1&c=2][the docs]]")
+                   "see <a href=\"https://example.com/a?b=1&amp;c=2\">the docs</a>"))))
+
+(ert-deftest org-agenda-kanban-test-title-html-unsafe-link ()
+  "Non-web link targets are not turned into anchors."
+  (let ((org-agenda-kanban-render-markup t))
+    (should (equal (org-agenda-kanban--title-html "[[javascript:alert(1)][x]]")
+                   "x"))
+    (should (equal (org-agenda-kanban--title-html "[[file:notes.org][notes]]")
+                   "notes"))))
+
+(ert-deftest org-agenda-kanban-test-title-html-raw ()
+  (let ((org-agenda-kanban-render-markup nil))
+    (should (equal (org-agenda-kanban--title-html "*b* <script>")
+                   "*b* &lt;script&gt;"))))
+
+(ert-deftest org-agenda-kanban-test-done-keywords ()
+  (let ((org-todo-keywords '((sequence "TODO(t)" "|" "DONE(d)" "CANCELLED(c@)")
+                             (sequence "OPEN" "CLOSED"))))
+    (should (equal (org-agenda-kanban--done-keywords)
+                   '("DONE" "CANCELLED" "CLOSED")))))
+
+(defun org-agenda-kanban-test--html-board ()
+  "Return the HTML export of a small fixed board."
+  (with-temp-buffer
+    (let* ((org-todo-keywords '((sequence "TODO" "|" "DONE")))
+           (org-agenda-kanban-columns nil)
+           (org-agenda-kanban-sort 'document)
+           (org-agenda-kanban-show-planning t)
+           (org-agenda-kanban-planning-compact t)
+           (org-agenda-kanban-html-title "My <Board>")
+           (org-priority-faces '((?A . "red")))
+           (org-tag-faces '(("work" . "dark orange")))
+           (overdue (org-agenda-kanban-test--card "Late" "TODO" '("work") ?A))
+           (done (org-agenda-kanban-test--card "Shipped" "DONE" nil nil)))
+      (setf (org-agenda-kanban-card-deadline overdue) "<2026-06-01 Mon>")
+      (setq org-agenda-kanban--cards (list overdue done)
+            org-agenda-kanban--visible (list overdue done)
+            org-agenda-kanban--tag-exclude '("home")
+            org-agenda-kanban--done-window 7)
+      (org-agenda-kanban--board-html (encode-time 0 0 12 2 6 2026)))))
+
+(ert-deftest org-agenda-kanban-test-board-html-structure ()
+  (let ((html (org-agenda-kanban-test--html-board)))
+    (should (string-prefix-p "<!DOCTYPE html>" html))
+    (should (string-match-p "<meta name=\"viewport\"" html))
+    (should (string-match-p "<title>My &lt;Board&gt;</title>" html))
+    (should (string-match-p "<th scope=\"col\">TODO<span class=\"count\">1</span></th>" html))
+    (should (string-match-p "<td data-label=\"DONE (1)\">" html))
+    ;; Priority and tag colors come from the Org faces.
+    (should (string-match-p "class=\"card prio-a\" style=\"--prio:#ff0000\"" html))
+    (should (string-match-p "style=\"--tag:#ff8c00\">#work</li>" html))
+    (should (string-match-p "<div class=\"plan overdue\"><b>Deadline</b>2026-06-01</div>" html))
+    (should (string-match-p "class=\"card done\"" html))
+    (should (string-match-p "<li class=\"exclude\">#home</li>" html))
+    (should (string-match-p "Done within 7 days" html))))
+
+(ert-deftest org-agenda-kanban-test-board-html-self-contained ()
+  "The export loads no external scripts, stylesheets, fonts or images."
+  (let ((html (org-agenda-kanban-test--html-board)))
+    (should-not (string-match-p "<script\\|<link\\|<img\\|@import\\|url(" html))
+    (should-not (string-match-p "src=" html))))
+
+(ert-deftest org-agenda-kanban-test-board-html-empty ()
+  (with-temp-buffer
+    (let ((org-agenda-kanban-columns '("TODO")))
+      (setq org-agenda-kanban--cards nil org-agenda-kanban--visible nil)
+      (let ((html (org-agenda-kanban--board-html)))
+        (should (string-match-p "No TODO cards found" html))
+        (should-not (string-match-p "<table" html))))))
+
+(ert-deftest org-agenda-kanban-test-export-html-writes-file ()
+  (let ((file (make-temp-file "kanban" nil ".html"))
+        (org-agenda-kanban-buffer-name " *kanban-export-test*"))
+    (unwind-protect
+        (with-current-buffer (get-buffer-create org-agenda-kanban-buffer-name)
+          (org-agenda-kanban-mode)
+          (setq org-agenda-kanban--cards
+                (list (org-agenda-kanban-test--card "Café ✓" "TODO" nil nil)))
+          (setq org-agenda-kanban--visible org-agenda-kanban--cards)
+          (let ((org-agenda-kanban-columns '("TODO")))
+            (with-temp-buffer
+              ;; Called from another buffer, it exports the board buffer.
+              (should (equal (org-agenda-kanban-export-html file)
+                             (expand-file-name file)))))
+          (with-temp-buffer
+            (let ((coding-system-for-read 'utf-8))
+              (insert-file-contents file))
+            (should (search-forward "Café ✓" nil t))))
+      (delete-file file)
+      (kill-buffer org-agenda-kanban-buffer-name))))
+
+(ert-deftest org-agenda-kanban-test-export-html-requires-board ()
+  (let ((org-agenda-kanban-buffer-name " *no-such-kanban*"))
+    (with-temp-buffer
+      (should-error (org-agenda-kanban-export-html "/tmp/x.html")
+                    :type 'user-error))))
+
+(ert-deftest org-agenda-kanban-test-export-key-bound ()
+  (should (eq (lookup-key org-agenda-kanban-mode-map "e")
+              #'org-agenda-kanban-export-html)))
+
 (provide 'org-agenda-kanban-test)
 ;;; org-agenda-kanban-test.el ends here

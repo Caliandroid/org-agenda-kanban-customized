@@ -59,6 +59,15 @@ configurable set of Org files.  The board is inspired by the visual polish of
   =org-add-note= on the selected card.  Type the note and press =C-c C-c=;
   it is timestamped and filed under the source heading — in its
   =:LOGBOOK:= drawer when ~org-log-into-drawer~ is set.
+- *Export to HTML.*  Press =e= (=M-x org-agenda-kanban-export-html=) to save
+  the board as it is currently displayed — columns, sorting, and active
+  filters — as one self-contained, responsive HTML file.  All CSS is
+  embedded and nothing is loaded remotely, so the page works offline in any
+  modern browser and can be mailed or shared as-is.  Priority and tag colors
+  follow ~org-priority-faces~ / ~org-tag-faces~, due/overdue dates are
+  highlighted, the page follows the reader's light/dark preference, and on
+  narrow screens the columns stack vertically.  With =C-u e= the file is also
+  opened in your browser.
 - *Sorting.*  Within each column, cards are sorted by Org priority (highest
   first) by default.  Like ~org-agenda~, an unprioritized card is treated as
   ~org-default-priority~ (normally =[#B]=), so it interleaves with explicit
@@ -194,6 +203,7 @@ repeaters, inline markup, and recently-closed cards.
 | =C-c C-d=              | Set the selected card's =DEADLINE=            |
 | =z=                    | Add a timestamped note to the selected card |
 | =s=                    | Save all Org buffers                        |
+| =e=                    | Export the board to a single HTML file      |
 | =k= / =c=                | Run =org-capture=                             |
 | =RET= / =o=              | Visit card's heading in its Org file        |
 | =double-mouse-1=       | Visit card's heading in its Org file        |
@@ -283,6 +293,11 @@ See =M-x customize-group RET org-agenda-kanban RET=.  Key variables:
   day-of-week name from planning timestamps (e.g. =2026-06-03 11:00 +1w=
   instead of =2026-06-03 Wed 11:00 +1w=) so they fit the card width.  Set to
   ~nil~ to keep the weekday name.
+- ~org-agenda-kanban-html-export-file~ — default file name offered by
+  =org-agenda-kanban-export-html= (default ="kanban.html"=, relative to the
+  board buffer's directory).
+- ~org-agenda-kanban-html-title~ — heading and =<title>= of the HTML export
+  (default ="Kanban"=).
 - ~org-agenda-kanban-line-spacing~ — buffer-local ~line-spacing~ for the board
   (default ~0~).  Cards are solid colored tiles; if your frame or theme adds
   inter-line spacing, the card background does not fill it and faint stripes
