@@ -150,10 +150,13 @@ least one character remains for card content."
   "Number of days back for which done cards are shown.
 A \"done\" card is one whose TODO keyword is among the buffer's done
 keywords (those after the \"|\" in `org-todo-keywords').  When this is a
-non-negative integer N, a done card appears only if its CLOSED timestamp
-is within the last N days; done cards lacking a CLOSED timestamp are
-always shown, since their age is unknown.  When nil, all done cards are
-shown regardless of age.
+non-negative integer N, a done card appears only if it was closed within
+the last N days.  The close date is the latest of the entry's CLOSED
+timestamp and its state-change notes into the done keyword, such as
+  - State \"DONE\" from \"TODO\" [2025-04-03 Thu 17:24]
+\(written when the keyword logs state changes, e.g. \"DONE(d@/!)\").
+Done cards with neither are always shown, since their age is unknown.
+When nil, all done cards are shown regardless of age.
 
 This sets the initial value of the per-board window, which can be changed
 interactively with `org-agenda-kanban-set-done-window'."
@@ -467,7 +470,8 @@ TODO state change, so selection can be preserved across a move.
 MARKER points at the source heading in its (live) file buffer and is
 used as the fast path for locating the heading to move; it is
 verified against TITLE before any destructive edit.
-CLOSED is the entry's CLOSED time (a Lisp time value) or nil.
+CLOSED is when a done entry was closed (a Lisp time value), taken from
+its CLOSED timestamp or latest state-change note, or nil.
 SCHEDULED and DEADLINE are the entry's raw planning timestamp strings
 \(e.g. \"<2026-06-02 Tue +1w>\"), preserving any repeater, or nil."
   id file marker title todo tags priority closed scheduled deadline)
@@ -515,7 +519,8 @@ SEEN is a hash table used to disambiguate duplicate outline paths."
          (title (or (org-element-property :raw-value el) ""))
          (priority (org-element-property :priority el))
          (tags (org-agenda-kanban--effective-tags))
-         (closed (org-agenda-kanban--closed-time))
+         (closed (and (member todo org-done-keywords)
+                      (org-agenda-kanban--closed-time todo)))
          (scheduled (org-agenda-kanban--planning-raw el :scheduled))
          (deadline (org-agenda-kanban--planning-raw el :deadline))
          (path (org-get-outline-path t))
@@ -548,21 +553,54 @@ value (preserving any repeater), or nil when unset or malformed."
 Initialized from `org-agenda-kanban-done-within-days' and adjustable
 with `org-agenda-kanban-set-done-window'.")
 
-(defun org-agenda-kanban--closed-time ()
-  "Return the CLOSED time of the entry at point as a Lisp time, or nil."
-  (let ((s (org-entry-get (point) "CLOSED")))
-    (and s (org-time-string-to-time s))))
+(defun org-agenda-kanban--state-note-times (todo)
+  "Return the times of the entry's state-change notes into TODO.
+These are the notes Org writes when a keyword logs its state change
+\(e.g. \"DONE(d@/!)\"), such as
+
+  - State \"DONE\"       from \"IN-PROGRESS\" [2025-04-03 Thu 17:24]
+
+found in the entry's own text (in or outside a LOGBOOK drawer, but not
+in child entries).  Matching ignores case, so notes that were upcased
+along with their surrounding text still count."
+  (save-excursion
+    (org-back-to-heading t)
+    (let ((end (save-excursion (outline-next-heading) (point)))
+          (case-fold-search t)
+          (re (concat "^[ \t]*- +State +\"" (regexp-quote todo) "\"[^\n]*?"
+                      "\\[\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}[^]\n]*\\)\\]"))
+          (times '()))
+      (while (re-search-forward re end t)
+        (when-let* ((time (ignore-errors
+                            (org-time-string-to-time (match-string 1)))))
+          (push time times)))
+      times)))
+
+(defun org-agenda-kanban--closed-time (&optional todo)
+  "Return when the entry at point was closed, as a Lisp time, or nil.
+TODO is the entry's keyword (defaulting to its current state).  The
+result is the latest of its CLOSED timestamp and its state-change notes
+into TODO (see `org-agenda-kanban--state-note-times'), so a task that
+was reopened and finished again is dated by its last completion."
+  (let* ((todo (or todo (org-get-todo-state)))
+         (closed (org-entry-get (point) "CLOSED"))
+         (times (append (and closed (list (org-time-string-to-time closed)))
+                        (and todo (org-agenda-kanban--state-note-times todo)))))
+    (and times
+         (car (sort times (lambda (a b) (time-less-p b a)))))))
 
 (defun org-agenda-kanban--show-entry-p (todo window now)
   "Return non-nil if the entry at point passes the done-date filter.
 TODO is the entry's keyword; this must run in the entry's Org buffer so
 `org-done-keywords' is accurate.  WINDOW is the number of days back to
 keep done cards (nil shows all).  NOW is the reference time.  Non-done
-entries always pass; a done entry passes when WINDOW is nil, when it has
-no CLOSED timestamp, or when its CLOSED time is within WINDOW days."
+entries always pass; a done entry passes when WINDOW is nil, when its
+close time is unknown, or when it was closed within WINDOW days.  The
+close time comes from `org-agenda-kanban--closed-time': the CLOSED
+timestamp or the latest state-change note into TODO."
   (or (null window)
       (not (member todo org-done-keywords))
-      (let ((time (org-agenda-kanban--closed-time)))
+      (let ((time (org-agenda-kanban--closed-time todo)))
         (or (null time)
             (<= (float-time (time-subtract now time))
                 (* window 86400))))))

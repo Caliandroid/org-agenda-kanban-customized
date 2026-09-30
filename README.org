@@ -133,7 +133,7 @@ settings below, so customizing them in Org is reflected here too.
 |---------------------------------------+-----------------------------------------------------------+----------------------------|
 | ~org-todo-keywords~                     | Default columns                                           | No (used via ~columns~)      |
 | ~org-agenda-files~                      | Default files scanned for cards                           | No (used via ~files~)        |
-| ~org-log-done~                          | Writes the =CLOSED= timestamp the done filter reads         | For the recently-done view |
+| ~org-log-done~ / =DONE(d!)= logging       | Writes the =CLOSED= line or state note the done filter reads | For the recently-done view |
 | ~org-priority-faces~ / ~org-priority~     | Priority cookie colors                                    | No                         |
 | ~org-default-priority~                  | Effective priority for unprioritized cards in sort/filter | No                         |
 | ~org-tag-faces~                         | Tag chip colors                                           | No                         |
@@ -146,16 +146,26 @@ just as in a normal Org buffer.
 ** Recording when a TODO is marked done
 
 The done-date filter (~org-agenda-kanban-done-within-days~) keeps
-recently-completed cards on the board and hides older ones.  It reads each done
-heading's =CLOSED= timestamp, which Org only writes when you ask it to:
+recently-completed cards on the board and hides older ones.  A done heading's
+close date is the most recent of
+
+- its =CLOSED= timestamp, and
+- its state-change notes into its current done keyword, such as
+  =- State "DONE"       from "IN-PROGRESS" [2025-04-03 Thu 17:24]=, whether
+  inside a =:LOGBOOK:= drawer or directly under the heading.  Notes of child
+  headings are ignored, and matching ignores case.
+
+Org only writes these when you ask it to, either globally or per keyword:
 
 #+begin_src emacs-lisp
-(setq org-log-done 'time)   ; or 'note to also prompt for a closing note
+(setq org-log-done 'time)   ; CLOSED line; or 'note to also prompt for a note
+;; or log the state change itself, e.g. with a timestamp (!) or note (@):
+(setq org-todo-keywords '((sequence "TODO" "|" "DONE(d@/!)" "CANCELLED(c@/!)")))
 #+end_src
 
-Without this, done headings have no =CLOSED= timestamp; such cards are always
-shown (their age is unknown), so the day-window filter effectively can't hide
-them.  Headings closed before you enabled logging are likewise always shown.
+A task that was reopened and finished again is dated by its last completion.
+Done headings with neither a =CLOSED= line nor a matching note are always shown
+(their age is unknown), so the day-window filter can't hide them.
 
 ** Priorities, tags, and faces (inherited from Org)
 
@@ -271,11 +281,12 @@ See =M-x customize-group RET org-agenda-kanban RET=.  Key variables:
   shown with its face and markers hidden, and links =[[target][desc]]= are
   shown as their description.  Set to ~nil~ to display raw Org text.
 - ~org-agenda-kanban-done-within-days~ — only show done cards closed within
-  this many days (default 7; ~nil~ shows all).  Done cards with no =CLOSED=
-  timestamp are always shown, and active (non-done) cards are always shown
-  regardless of this setting.  See [[*Org configuration][Org configuration]] for how to record the
-  =CLOSED= timestamp.  Adjust live with =t d=, or click the =done <=Nd x=
-  header chip to show all done cards.
+  this many days (default 7; ~nil~ shows all).  The close date is the
+  =CLOSED= timestamp or the latest =- State "DONE" …= note, whichever is newer.
+  Done cards with neither are always shown, and active (non-done) cards are
+  always shown regardless of this setting.  See [[*Recording when a TODO is marked done][Recording when a TODO is marked
+  done]] for how to record the close date.  Adjust live with =/ d=, or click the
+  =done <=Nd x= header chip to show all done cards.
 - ~org-agenda-kanban-priority-style~ — how a card reflects its Org priority
   (default ~cookie~).  Colors come from ~org-agenda-kanban-priority-colors~
   when set, otherwise from Org's own ~org-priority-faces~ (with the

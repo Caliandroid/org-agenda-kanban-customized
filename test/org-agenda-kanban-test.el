@@ -774,6 +774,73 @@ against regressing the defaults to non-ASCII."
                    all)))
           (should (cl-every #'identity all)))))))
 
+(defun org-agenda-kanban-test--state-note (state from days-ago)
+  "Return a state-change note line into STATE from FROM, DAYS-AGO days ago."
+  (format "- State %-12s from %-12s %s\n"
+          (format "\"%s\"" state) (format "\"%s\"" from)
+          (org-agenda-kanban-test--closed days-ago)))
+
+(ert-deftest org-agenda-kanban-test-closed-time-from-state-notes ()
+  "Done dates come from state-change notes when there is no CLOSED line."
+  (let ((org-todo-keywords
+         '((sequence "TODO" "IN-PROGRESS" "|" "DONE(d@/!)" "CANCELLED(c@/!)"))))
+    (with-temp-buffer
+      (insert "* DONE recent note\n"
+              (org-agenda-kanban-test--state-note "DONE" "IN-PROGRESS" 2)
+              "  some text\n"
+              "* DONE old note\n"
+              (org-agenda-kanban-test--state-note "DONE" "TODO" 40)
+              "* DONE in logbook\n:LOGBOOK:\n"
+              (org-agenda-kanban-test--state-note "DONE" "TODO" 1)
+              ":END:\n"
+              "* DONE reopened and redone\n"
+              (org-agenda-kanban-test--state-note "DONE" "TODO" 3)
+              (org-agenda-kanban-test--state-note "TODO" "DONE" 20)
+              (org-agenda-kanban-test--state-note "DONE" "TODO" 30)
+              "* DONE upcased\n"
+              (upcase (org-agenda-kanban-test--state-note "DONE" "TODO" 1))
+              "* CANCELLED only other state notes\n"
+              (org-agenda-kanban-test--state-note "DONE" "TODO" 1)
+              (org-agenda-kanban-test--state-note "CANCELLED" "TODO" 50)
+              "* DONE note only in child\n"
+              "** TODO child\n"
+              (org-agenda-kanban-test--state-note "DONE" "TODO" 1)
+              "* DONE closed line still counts\n  CLOSED: "
+              (org-agenda-kanban-test--closed 1) "\n")
+      (org-mode)
+      (let ((now (current-time))
+            (results '()))
+        (org-map-entries
+         (lambda ()
+           (let ((todo (org-get-todo-state)))
+             (when (member todo org-done-keywords)
+               (push (cons (org-get-heading t t t t)
+                           (and (org-agenda-kanban--show-entry-p todo 7 now) t))
+                     results)))))
+        (should (cdr (assoc "recent note" results)))
+        (should-not (cdr (assoc "old note" results)))
+        (should (cdr (assoc "in logbook" results)))
+        ;; The latest completion wins, whatever the note order.
+        (should (cdr (assoc "reopened and redone" results)))
+        (should (cdr (assoc "upcased" results)))
+        ;; Only notes into the entry's own keyword count.
+        (should-not (cdr (assoc "only other state notes" results)))
+        ;; A child's notes do not date the parent: unknown age, shown.
+        (should (cdr (assoc "note only in child" results)))
+        (should (cdr (assoc "closed line still counts" results)))))))
+
+(ert-deftest org-agenda-kanban-test-closed-time-latest ()
+  "`--closed-time' returns the most recent of CLOSED and state notes."
+  (with-temp-buffer
+    (insert "* DONE task\n  CLOSED: [2026-01-05 Mon 10:00]\n"
+            "- State \"DONE\"       from \"TODO\"       [2026-03-01 Sun 09:30]\n"
+            "- State \"DONE\"       from \"TODO\"       [2026-02-01 Sun 09:30]\n")
+    (let ((org-todo-keywords '((sequence "TODO" "|" "DONE"))))
+      (org-mode)
+      (goto-char (point-min))
+      (should (equal (format-time-string "%F %R" (org-agenda-kanban--closed-time))
+                     "2026-03-01 09:30")))))
+
 ;;;; Direct card editing
 
 (defun org-agenda-kanban-test--file-contents (file)
