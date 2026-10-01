@@ -1,5 +1,6 @@
-#+title: org-agenda-kanban
-#+author: Gregg Rothmeier
+#+title: org-agenda-kanban-customized
+#+original author: Gregg Rothmeier
+#+fork-co-author: Stefan Caliandro
 #+options: toc:nil num:nil
 
 A modern, mouse- and keyboard-driven *kanban board* for Org-mode TODOs.
