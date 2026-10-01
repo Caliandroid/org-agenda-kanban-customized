@@ -7,8 +7,8 @@
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: outlines, convenience, org
-;; URL: https://github.com/greggroth/org-agenda-kanban
-
+;; Origin URL: https://github.com/greggroth/org-agenda-kanban
+;; URL of this fork: https://github.com/Caliandroid/org-agenda-kanban-customized/
 ;; This file is not part of GNU Emacs.
 
 ;; This program is free software: you can redistribute it and/or modify
