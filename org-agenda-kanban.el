@@ -164,6 +164,26 @@ interactively with `org-agenda-kanban-set-done-window'."
                  (integer :tag "Days"))
   :group 'org-agenda-kanban)
 
+(defcustom org-agenda-kanban-show-archives nil
+  "Whether archived tasks appear on the board.
+This mirrors `org-agenda-archives-mode':
+- nil    : hide archived tasks.  Subtrees tagged with
+  `org-archive-tag' are skipped when `org-agenda-skip-archived-trees'
+  is non-nil (its default), exactly as in `org-agenda'.
+- `trees' : also show TODOs inside subtrees tagged with
+  `org-archive-tag' in the configured files.
+- t      : additionally scan the archive files used by the configured
+  files (see `org-archive-location'), so tasks moved away with
+  `org-archive-subtree' are shown too.
+
+This sets the initial value for each board, which can be toggled
+interactively with `org-agenda-kanban-toggle-archived-trees' and
+`org-agenda-kanban-toggle-archive-files'."
+  :type '(choice (const :tag "Hide archived tasks" nil)
+                 (const :tag "Show archived subtrees" trees)
+                 (const :tag "Show archived subtrees and archive files" t))
+  :group 'org-agenda-kanban)
+
 (defcustom org-agenda-kanban-render-markup t
   "When non-nil, render Org inline markup in card titles.
 Emphasis (=*bold*=, =/italic/=, =_underline_=, =~code~=, ==verbatim==,
@@ -498,10 +518,29 @@ KW may contain fast-access and logging annotations such as
   (or org-agenda-kanban-columns
       (org-agenda-kanban--default-columns)))
 
-(defun org-agenda-kanban--resolve-files ()
-  "Return the list of files to scan for cards."
-  (let ((org-agenda-files (or org-agenda-kanban-files org-agenda-files)))
-    (org-agenda-files t)))
+(defvar-local org-agenda-kanban--archives nil
+  "Archive visibility of this board: nil, `trees', or t.
+Initialized from `org-agenda-kanban-show-archives'; see there for the
+meaning of each value.")
+
+(defun org-agenda-kanban--resolve-files (&optional archives)
+  "Return the list of files to scan for cards.
+When ARCHIVES is t, the archive files used by those files are
+included as well (see `org-add-archive-files')."
+  (let* ((org-agenda-files (or org-agenda-kanban-files org-agenda-files))
+         (files (org-agenda-files t)))
+    (if (eq archives t)
+        (progn
+          (require 'org-archive)
+          (delete-dups (org-add-archive-files files)))
+      files)))
+
+(defun org-agenda-kanban--skip-archived-p (archives)
+  "Return non-nil if archived subtrees are hidden under ARCHIVES.
+ARCHIVES is a value of `org-agenda-kanban--archives'.  As in
+`org-agenda', archived trees are hidden only while archives are off and
+`org-agenda-skip-archived-trees' is non-nil."
+  (and (null archives) org-agenda-skip-archived-trees))
 
 (defun org-agenda-kanban--file-buffer (file)
   "Return a live buffer visiting FILE, opening it if necessary."
@@ -609,26 +648,31 @@ timestamp or the latest state-change note into TODO."
   "Collect cards from the configured files into a flat list.
 Only headings whose TODO keyword is one of the configured columns are
 included.  Done headings closed more than `org-agenda-kanban--done-window'
-days ago are skipped."
+days ago are skipped.  Archived tasks are included according to
+`org-agenda-kanban--archives'."
   (let ((columns (org-agenda-kanban--columns))
         (window org-agenda-kanban--done-window)
+        (archives org-agenda-kanban--archives)
         (now (current-time))
         (seen (make-hash-table :test 'equal))
         (cards '()))
-    (dolist (file (org-agenda-kanban--resolve-files))
+    (dolist (file (org-agenda-kanban--resolve-files archives))
       (when (file-readable-p file)
         (with-current-buffer (org-agenda-kanban--file-buffer file)
           (when (derived-mode-p 'org-mode)
             (org-with-wide-buffer
              (goto-char (point-min))
-             (org-map-entries
+             (apply
+              #'org-map-entries
               (lambda ()
                 (let ((todo (org-get-todo-state)))
                   (when (and todo (member todo columns)
                              (org-agenda-kanban--show-entry-p todo window now))
                     (push (org-agenda-kanban--card-at-point todo seen)
                           cards))))
-              nil 'file))))))
+              nil 'file
+              (and (org-agenda-kanban--skip-archived-p archives)
+                   '(archive))))))))
     (nreverse cards)))
 
 ;;;; Buffer-local state
@@ -1747,6 +1791,31 @@ Re-collects the board so the new window takes effect."
   (setq org-agenda-kanban--done-window days)
   (org-agenda-kanban-refresh))
 
+(defun org-agenda-kanban-set-archives (value)
+  "Set the board's archive visibility to VALUE and re-collect.
+VALUE is nil, `trees', or t; see `org-agenda-kanban-show-archives'."
+  (setq org-agenda-kanban--archives value)
+  (org-agenda-kanban-refresh)
+  (message "Archives: %s"
+           (pcase value
+             ('nil "hidden")
+             ('trees "archived subtrees shown")
+             (_ "archived subtrees and archive files shown"))))
+
+(defun org-agenda-kanban-toggle-archived-trees ()
+  "Toggle showing TODOs in archived subtrees, like Org Agenda's \`v a'.
+When any archives are shown, hide them all instead."
+  (interactive)
+  (org-agenda-kanban-set-archives
+   (if org-agenda-kanban--archives nil 'trees)))
+
+(defun org-agenda-kanban-toggle-archive-files ()
+  "Toggle showing archived subtrees and archive files, like Agenda's \`v A'.
+When any archives are shown, hide them all instead."
+  (interactive)
+  (org-agenda-kanban-set-archives
+   (if org-agenda-kanban--archives nil t)))
+
 ;;;; Header line
 
 (defun org-agenda-kanban--chip-keymap (command &rest args)
@@ -1799,6 +1868,18 @@ Re-collects the board so the new window takes effect."
                         'keymap (org-agenda-kanban--chip-keymap
                                  #'org-agenda-kanban-set-done-window nil)
                         'help-echo "mouse-1: show all done cards")
+            chips))
+    (when org-agenda-kanban--archives
+      (push (propertize (format " %s %s "
+                                (if (eq org-agenda-kanban--archives t)
+                                    "archives+files"
+                                  "archives")
+                                org-agenda-kanban-header-remove-glyph)
+                        'face 'org-agenda-kanban-filter-chip
+                        'mouse-face 'highlight
+                        'keymap (org-agenda-kanban--chip-keymap
+                                 #'org-agenda-kanban-set-archives nil)
+                        'help-echo "mouse-1: hide archived tasks")
             chips))
     (concat (propertize "Filters: " 'face 'bold)
             (if chips
@@ -2074,7 +2155,11 @@ due/overdue planning classes."
             (list (format "<li>Priority %c</li>" org-agenda-kanban--priority-filter)))
           (when org-agenda-kanban--done-window
             (list (format "<li>Done within %d days</li>"
-                          org-agenda-kanban--done-window))))))
+                          org-agenda-kanban--done-window)))
+          (when org-agenda-kanban--archives
+            (list (if (eq org-agenda-kanban--archives t)
+                      "<li>Including archive files</li>"
+                    "<li>Including archived subtrees</li>"))))))
     (if chips
         (concat "<ul class=\"filters\" aria-label=\"Active filters\">"
                 (apply #'concat chips) "</ul>")
@@ -2220,6 +2305,9 @@ With a prefix argument OPEN, also open FILE in a browser."
     (define-key map "/c" #'org-agenda-kanban-clear-filters)
     (define-key map "/d" #'org-agenda-kanban-set-done-window)
     (define-key map "\\" #'org-agenda-kanban-toggle-tag)
+    ;; Archive visibility mirrors Org Agenda's `v a' / `v A'.
+    (define-key map "va" #'org-agenda-kanban-toggle-archived-trees)
+    (define-key map "vA" #'org-agenda-kanban-toggle-archive-files)
     (define-key map "g" #'org-agenda-kanban-refresh)
     (define-key map "r" #'org-agenda-kanban-refresh)
     (define-key map "q" #'org-agenda-kanban-quit)
@@ -2236,6 +2324,9 @@ With a prefix argument OPEN, also open FILE in a browser."
   (unless (local-variable-p 'org-agenda-kanban--done-window)
     (setq-local org-agenda-kanban--done-window
                 org-agenda-kanban-done-within-days))
+  (unless (local-variable-p 'org-agenda-kanban--archives)
+    (setq-local org-agenda-kanban--archives
+                org-agenda-kanban-show-archives))
   (buffer-face-set 'fixed-pitch)
   (add-hook 'isearch-mode-end-hook #'org-agenda-kanban--isearch-select nil t)
   (add-hook 'kill-buffer-hook #'org-agenda-kanban--follow-unhighlight nil t)

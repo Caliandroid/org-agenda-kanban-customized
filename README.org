@@ -62,6 +62,16 @@ the assistance of [[https://claude.com/claude-code][Claude Code]], Anthropic's A
   =:LOGBOOK:= drawer or directly under the heading.  The most recent
   completion wins, so a reopened and re-finished task is dated by its last
   completion.  See [[*Recording when a TODO is marked done][Recording when a TODO is marked done]].
+- *Show archived tasks (=v a= / =v A=).*  Like Org Agenda's archives mode,
+  archived tasks are hidden by default and can be brought onto the board.
+  =v a= shows TODOs in subtrees tagged =:ARCHIVE:=; =v A= additionally scans
+  the archive files (e.g. =todo.org_archive=, see ~org-archive-location~) that
+  =org-archive-subtree= moved tasks into.  Pressing either key again hides
+  archives; so does clicking the =archives x= header chip.  To show them by
+  default:
+  #+begin_src emacs-lisp
+  (setq org-agenda-kanban-show-archives t)   ; nil | trees | t
+  #+end_src
 
 -----
 
@@ -314,6 +324,8 @@ repeaters, inline markup, and recently-closed cards.
 | =/ p=                  | Filter by effective priority (prompt)       |
 | =/ c=                  | Clear all filters                           |
 | =/ d=                  | Set the done-card date window (prompt)      |
+| =v a=                  | Toggle archived (=:ARCHIVE:=) subtrees        |
+| =v A=                  | Toggle archived subtrees and archive files  |
 | =g= / =r=                | Refresh                                     |
 | =q=                    | Quit                                        |
 
@@ -367,6 +379,14 @@ See =M-x customize-group RET org-agenda-kanban RET=.  Key variables:
   always shown regardless of this setting.  See [[*Recording when a TODO is marked done][Recording when a TODO is marked
   done]] for how to record the close date.  Adjust live with =/ d=, or click the
   =done <=Nd x= header chip to show all done cards.
+- ~org-agenda-kanban-show-archives~ — whether archived tasks appear on the
+  board, mirroring ~org-agenda-archives-mode~ (default ~nil~).  ~nil~ hides
+  them: subtrees tagged =:ARCHIVE:= are skipped while
+  ~org-agenda-skip-archived-trees~ is non-nil (its default), as in
+  =org-agenda=.  ~trees~ shows TODOs inside archived subtrees; ~t~ also scans
+  the archive files used by the configured files (per
+  ~org-archive-location~).  Toggle live with =v a= / =v A=; an =archives= or
+  =archives+files= header chip shows the current mode.
 - ~org-agenda-kanban-priority-style~ — how a card reflects its Org priority
   (default ~cookie~).  Colors come from ~org-agenda-kanban-priority-colors~
   when set, otherwise from Org's own ~org-priority-faces~ (with the

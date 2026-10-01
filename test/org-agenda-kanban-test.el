@@ -1273,6 +1273,69 @@ narrowed command narrows even when the option is off."
                   #'org-agenda-kanban-toggle-tag))
   (should-not (keymapp (lookup-key org-agenda-kanban-mode-map "t"))))
 
+;;;; Archives
+
+(ert-deftest org-agenda-kanban-test-archives-keys-bound ()
+  "Archive toggles mirror Org Agenda's `v a' and `v A'."
+  (should (eq (lookup-key org-agenda-kanban-mode-map "va")
+              #'org-agenda-kanban-toggle-archived-trees))
+  (should (eq (lookup-key org-agenda-kanban-mode-map "vA")
+              #'org-agenda-kanban-toggle-archive-files)))
+
+(ert-deftest org-agenda-kanban-test-skip-archived-p ()
+  "Archived trees are hidden only while archives are off, as in Agenda."
+  (let ((org-agenda-skip-archived-trees t))
+    (should (org-agenda-kanban--skip-archived-p nil))
+    (should-not (org-agenda-kanban--skip-archived-p 'trees))
+    (should-not (org-agenda-kanban--skip-archived-p t)))
+  (let ((org-agenda-skip-archived-trees nil))
+    (should-not (org-agenda-kanban--skip-archived-p nil))))
+
+(ert-deftest org-agenda-kanban-test-collect-archives ()
+  "Archived subtrees and archive files are collected per the archives mode."
+  (let* ((org-todo-keywords '((sequence "TODO" "|" "DONE")))
+         (org-agenda-skip-archived-trees t)
+         (org-archive-location "%s_archive::")
+         (file (make-temp-file "okm-archives" nil ".org"
+                               (concat "* TODO live\n"
+                                       "* Old :ARCHIVE:\n"
+                                       "** TODO tagged\n")))
+         (archive (concat file "_archive")))
+    ;; `org-archive-subtree' writes this mode line into new archive files.
+    (with-temp-file archive
+      (insert "#    -*- mode: org -*-\n* TODO moved\n"))
+    (unwind-protect
+        (let ((org-agenda-kanban-files (list file))
+              (org-agenda-kanban-columns '("TODO" "DONE")))
+          (with-temp-buffer
+            (cl-flet ((titles (archives)
+                        (setq org-agenda-kanban--archives archives)
+                        (mapcar #'org-agenda-kanban-card-title
+                                (org-agenda-kanban--collect))))
+              (should (equal (titles nil) '("live")))
+              (should (equal (titles 'trees) '("live" "tagged")))
+              (should (equal (titles t) '("live" "tagged" "moved"))))))
+      (org-agenda-kanban-test--kill-file-buffer file)
+      (org-agenda-kanban-test--kill-file-buffer archive)
+      (delete-file file)
+      (delete-file archive))))
+
+(ert-deftest org-agenda-kanban-test-toggle-archives ()
+  "`v a' / `v A' switch archives on, and either switches them off again."
+  (cl-letf (((symbol-function 'org-agenda-kanban-refresh) #'ignore))
+    (with-temp-buffer
+      (setq org-agenda-kanban--archives nil)
+      (org-agenda-kanban-toggle-archived-trees)
+      (should (eq org-agenda-kanban--archives 'trees))
+      (org-agenda-kanban-toggle-archive-files)
+      (should (null org-agenda-kanban--archives))
+      (org-agenda-kanban-toggle-archive-files)
+      (should (eq org-agenda-kanban--archives t))
+      (should (string-match-p "archives\\+files"
+                              (org-agenda-kanban--header-line)))
+      (org-agenda-kanban-toggle-archived-trees)
+      (should (null org-agenda-kanban--archives)))))
+
 ;;;; HTML export
 
 (ert-deftest org-agenda-kanban-test-html-escape ()
