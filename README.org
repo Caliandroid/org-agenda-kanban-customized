@@ -23,7 +23,8 @@ the assistance of [[https://claude.com/claude-code][Claude Code]], Anthropic's A
 - *Add notes from the board (=z=).*  Press =z= (as in =org-agenda=) to run
   =org-add-note= on the selected card.  Type the note and press =C-c C-c=;
   it is timestamped and filed under the source heading — in its
-  =:LOGBOOK:= drawer when ~org-log-into-drawer~ is set.
+  =:LOGBOOK:= drawer when ~org-log-into-drawer~ is set.  Afterwards (or
+  after cancelling with =C-c C-k=) focus returns to the board.
 - *Export to HTML (=e=).*  Press =e= (=M-x org-agenda-kanban-export-html=) to
   save the board as it is currently displayed — columns, sorting, and active
   filters — as one self-contained, responsive HTML file.  All CSS is embedded

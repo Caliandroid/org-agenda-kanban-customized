@@ -1663,13 +1663,48 @@ removes the entry's DEADLINE timestamp."
                    (call-interactively #'org-deadline))))))
     (message "Set deadline of \"%s\"" (org-agenda-kanban-card-title card))))
 
+(defvar org-agenda-kanban--note-board nil
+  "Board buffer to return to once the pending card note is finished.")
+
+(defvar-local org-agenda-kanban--note-finish nil
+  "Cons (FINISH . BOARD) of the wrapped note buffer's original finisher.")
+
+(defun org-agenda-kanban--return-to-board (board)
+  "Select BOARD again, reusing a window that already shows it."
+  (when (buffer-live-p board)
+    (let ((win (get-buffer-window board)))
+      (if win (select-window win) (switch-to-buffer board)))))
+
+(defun org-agenda-kanban--note-setup ()
+  "Make the pending note buffer return to the board when finished.
+Runs once from `org-log-buffer-setup-hook' in the *Org Note* buffer and
+wraps its `org-finish-function', so both C-c C-c and C-c C-k end with
+point back on the board."
+  (remove-hook 'org-log-buffer-setup-hook #'org-agenda-kanban--note-setup)
+  (when-let* ((board org-agenda-kanban--note-board)
+              (finish org-finish-function))
+    (setq org-agenda-kanban--note-board nil)
+    ;; `org-ctrl-c-ctrl-c' only calls a symbol, so keep the original
+    ;; finisher and the board in buffer-local state.
+    (setq-local org-agenda-kanban--note-finish (cons finish board))
+    (setq-local org-finish-function #'org-agenda-kanban--note-finish)))
+
+(defun org-agenda-kanban--note-finish ()
+  "Finish the card note as Org would, then return to its board."
+  (let ((state org-agenda-kanban--note-finish))
+    (unwind-protect (funcall (car state))
+      (org-agenda-kanban--return-to-board (cdr state)))))
+
 (defun org-agenda-kanban-add-note ()
   "Add a timestamped note to the selected card via `org-add-note'.
 Mirrors \\[org-agenda-add-note] in `org-agenda': a note buffer pops up,
 and C-c C-c files the timestamped note under the source heading
-\(in its LOGBOOK drawer when `org-log-into-drawer' is set).  The source
-buffer is left unsaved."
+\(in its LOGBOOK drawer when `org-log-into-drawer' is set).  Finishing
+or aborting the note returns to the board.  The source buffer is left
+unsaved."
   (interactive)
+  (setq org-agenda-kanban--note-board (current-buffer))
+  (add-hook 'org-log-buffer-setup-hook #'org-agenda-kanban--note-setup)
   (org-agenda-kanban--edit-at-card #'org-add-note))
 
 ;;;; Visiting the source heading

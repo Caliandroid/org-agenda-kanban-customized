@@ -1073,6 +1073,48 @@ The selection (stable ID) survives the edit."
       (org-agenda-kanban-test--kill-file-buffer file)
       (delete-file file))))
 
+(ert-deftest org-agenda-kanban-test-add-note-returns-to-board ()
+  "Finishing or aborting a card note selects the board again."
+  (let* ((org-todo-keywords '((sequence "TODO" "|" "DONE")))
+         (org-log-into-drawer t)
+         (file (make-temp-file "okm-note-return" nil ".org"
+                               "* TODO write tests\n"))
+         (board (get-buffer-create "*okm-note-board*")))
+    (unwind-protect
+        (let ((org-agenda-kanban-files (list file))
+              (org-agenda-kanban-columns '("TODO" "DONE")))
+          (dolist (abort '(nil t))
+            (with-current-buffer board
+              (org-agenda-kanban-mode)
+              (org-agenda-kanban-refresh)
+              (setq org-agenda-kanban--selected-id
+                    (org-agenda-kanban-card-id (car org-agenda-kanban--cards))))
+            (switch-to-buffer board)
+            (delete-other-windows)
+            (let ((this-command 'org-agenda-kanban-add-note))
+              (org-agenda-kanban-add-note)
+              (org-add-log-note))
+            ;; Simulate a setup whose saved layout leaves the source
+            ;; heading selected once Org restores it.
+            (let ((source (find-buffer-visiting file)))
+              (with-current-buffer "*Org Note*"
+                (save-window-excursion
+                  (switch-to-buffer source)
+                  (setq org-log-note-window-configuration
+                        (current-window-configuration)))
+                (if abort
+                    (org-kill-note-or-show-branches)
+                  (insert "Blocked on review")
+                  (org-ctrl-c-ctrl-c))))
+            (should (eq (window-buffer (selected-window)) board))
+            (should-not (memq #'org-agenda-kanban--note-setup
+                              org-log-buffer-setup-hook))))
+      (remove-hook 'post-command-hook #'org-add-log-note)
+      (remove-hook 'org-log-buffer-setup-hook #'org-agenda-kanban--note-setup)
+      (kill-buffer board)
+      (org-agenda-kanban-test--kill-file-buffer file)
+      (delete-file file))))
+
 (ert-deftest org-agenda-kanban-test-follow-key-bound ()
   "`F' toggles kanban follow-mode."
   (should (eq (lookup-key org-agenda-kanban-mode-map "F")
